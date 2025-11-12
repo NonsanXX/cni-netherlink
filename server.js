@@ -1,3 +1,4 @@
+require('dotenv').config();
 const http = require('http');
 const os = require('os');
 const fs = require('fs');
@@ -6,6 +7,10 @@ const { spawn } = require('child_process');
 const net = require('net');
 
 const PORT = process.env.PORT || 4567;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const PING_TIMEOUT = parseInt(process.env.PING_TIMEOUT || '1500', 10);
+const PORT_CHECK_TIMEOUT = parseInt(process.env.PORT_CHECK_TIMEOUT || '1500', 10);
+const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
 function pingHost(ip) {
     return new Promise((resolve) => {
@@ -34,7 +39,7 @@ function pingHost(ip) {
                     try { child.kill('SIGKILL'); } catch {}
                     resolve(false);
                 }
-            }, 1500);
+            }, PING_TIMEOUT);
 
             child.on('close', (code) => {
                 if (done) return;
@@ -55,7 +60,7 @@ function pingHost(ip) {
     });
 }
 
-function checkPort(ip, port, timeout = 1500) {
+function checkPort(ip, port, timeout = PORT_CHECK_TIMEOUT) {
     return new Promise((resolve) => {
         if (!ip || !port) return resolve(false);
         const socket = new net.Socket();
@@ -147,8 +152,8 @@ function serveStatic(req, res) {
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
-    // Set permissive CORS for all requests (static + API)
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // Set CORS headers for all requests (static + API)
+    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
     res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -190,5 +195,10 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`[${NODE_ENV}] Server is running on http://localhost:${PORT}`);
+    if (NODE_ENV === 'development') {
+        console.log(`CORS Origin: ${CORS_ORIGIN}`);
+        console.log(`Ping Timeout: ${PING_TIMEOUT}ms`);
+        console.log(`Port Check Timeout: ${PORT_CHECK_TIMEOUT}ms`);
+    }
 });

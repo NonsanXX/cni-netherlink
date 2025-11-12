@@ -1,0 +1,25 @@
+{
+  "name": "cni-netherlink",
+  "version": "1.0.0",
+  "description": "CNI Network Monitoring Dashboard - Minecraft Edition",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "prod": "NODE_ENV=production node server.js"
+  },
+  "keywords": [
+    "network",
+    "monitoring",
+    "dashboard",
+    "minecraft"
+  ],
+  "author": "Phuriphat (@NonsanXX)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
