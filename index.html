@@ -9,11 +9,16 @@
 </head>
 
 <body>
+    <!-- Background Music -->
+    <audio id="bgMusic" loop>
+        <source src="sounds/song.mp3" type="audio/mpeg">
+    </audio>
+
     <!-- Minecraft Loading Screen -->
     <div id="loadingScreen" class="loading-screen">
         <div class="loading-content">
             <img src="img/logo.png" alt="Netherlink" class="loading-logo">
-            <div class="loading-text">Loading...</div>
+            <div class="loading-text">Building Terrain</div>
             <div class="loading-bar">
                 <div class="loading-progress"></div>
             </div>
@@ -21,7 +26,10 @@
     </div>
 
     <div class="container">
-        <img src="img/logo.png" alt="Netherlink | CNI 2025/2" class="logo">
+        <div class="logo-container">
+            <img src="img/logo.png" alt="Netherlink | CNI 2025/2" class="logo">
+            <div class="splash-text"></div>
+        </div>
         <h2>Terminal Servers</h2>
         <p class="subtitle">Click any device to open SSH</p>
         <div class="device-grid" id="deviceGrid"></div>
@@ -30,6 +38,14 @@
         <p class="subtitle">Open the Proxmox web interface</p>
         <div class="device-grid" id="proxmoxGrid"></div>
     </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Made with <img src="img/heart.png" alt="love" class="heart-icon"> by 
+        <a href="https://github.com/NonsanXX" target="_blank" rel="noopener" class="footer-link">@Phuriphat</a>
+        and friends.
+    </footer>
+
     <!-- Global tips overlay (above everything) -->
     <div id="tipsOverlay" class="tips-overlay" aria-hidden="true">
         <div class="tips-backdrop"></div>
@@ -53,6 +69,19 @@
     <div id="statusMessage" class="status-message"></div>
 
     <script>
+        // Background music
+        const bgMusic = document.getElementById('bgMusic');
+        bgMusic.volume = 0.1;
+        
+        // Play music on first user interaction
+        let musicStarted = false;
+        document.addEventListener('click', () => {
+            if (!musicStarted) {
+                bgMusic.play().catch(() => {});
+                musicStarted = true;
+            }
+        }, { once: true });
+
         // Minecraft click sound
         const clickSound = new Audio('sounds/minecraft_click.mp3');
         clickSound.volume = 0.5;
@@ -72,6 +101,36 @@
         let lastIpForHelp = null;
         let activeTips = null; // currently open tips overlay element
         let initialHealthCheckDone = false;
+
+        // Load and set random splash text (for main page only)
+        async function setRandomSplash() {
+            try {
+                const response = await fetch('splashtext.json');
+                const splashTexts = await response.json();
+                const splashEl = document.querySelector('.container .splash-text');
+                if (splashEl && splashTexts.length > 0) {
+                    const randomText = splashTexts[Math.floor(Math.random() * splashTexts.length)];
+                    splashEl.textContent = randomText;
+                }
+            } catch (error) {
+                console.error('Error loading splash text:', error);
+                // Fallback text
+                const splashEl = document.querySelector('.container .splash-text');
+                if (splashEl) {
+                    splashEl.textContent = 'CNI 2025/2!';
+                }
+            }
+        }
+
+        // Set splash text after page loads
+        window.addEventListener('DOMContentLoaded', setRandomSplash);
+
+        function updateLoadingProgress(percent) {
+            const progressBar = document.querySelector('.loading-progress');
+            if (progressBar) {
+                progressBar.style.width = percent + '%';
+            }
+        }
 
         function hideLoadingScreen() {
             const loadingScreen = document.getElementById('loadingScreen');
@@ -242,9 +301,27 @@
         async function startHealthMonitor() {
             if (healthTimer) clearInterval(healthTimer);
             const runAll = async () => {
-                const deviceChecks = devices.map(d => checkHealth(d.ip).catch(() => { }));
+                const totalChecks = devices.length + (Array.isArray(proxmoxHosts) ? proxmoxHosts.length : 0);
+                let completedChecks = 0;
+
+                const deviceChecks = devices.map(d => 
+                    checkHealth(d.ip).catch(() => {}).finally(() => {
+                        completedChecks++;
+                        if (!initialHealthCheckDone) {
+                            updateLoadingProgress((completedChecks / totalChecks) * 100);
+                        }
+                    })
+                );
+                
                 const proxmoxChecks = Array.isArray(proxmoxHosts) 
-                    ? proxmoxHosts.map(h => checkProxmoxHealth(h.ip).catch(() => { }))
+                    ? proxmoxHosts.map(h => 
+                        checkProxmoxHealth(h.ip).catch(() => {}).finally(() => {
+                            completedChecks++;
+                            if (!initialHealthCheckDone) {
+                                updateLoadingProgress((completedChecks / totalChecks) * 100);
+                            }
+                        })
+                    )
                     : [];
                 
                 await Promise.all([...deviceChecks, ...proxmoxChecks]);
@@ -252,7 +329,7 @@
                 // Hide loading screen after first health check completes
                 if (!initialHealthCheckDone) {
                     initialHealthCheckDone = true;
-                    hideLoadingScreen();
+                    setTimeout(hideLoadingScreen, 300);
                 }
             };
             await runAll();
