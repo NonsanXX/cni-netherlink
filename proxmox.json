@@ -1,0 +1,32 @@
+[
+    {
+        "ip": "10.30.6.119",
+        "name": "Rack 1 Proxmox Host",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.129",
+        "name": "Rack 2 Proxmox Host",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.139",
+        "name": "Rack 3 Proxmox Host",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.149",
+        "name": "Rack 4 Proxmox Host",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.159",
+        "name": "Rack 5 Proxmox Host",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.169",
+        "name": "Rack 6 Proxmox Host",
+        "location": "Lab 306"
+    }
+]

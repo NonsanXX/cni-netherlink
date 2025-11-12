@@ -1,0 +1,32 @@
+[
+    {
+        "ip": "10.30.6.110",
+        "name": "Rack 1 Terminal Server",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.120",
+        "name": "Rack 2 Terminal Server",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.130",
+        "name": "Rack 3 Terminal Server",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.140",
+        "name": "Rack 4 Terminal Server",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.150",
+        "name": "Rack 5 Terminal Server",
+        "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.160",
+        "name": "Rack 6 Terminal Server",
+        "location": "Lab 306"
+    }
+]
