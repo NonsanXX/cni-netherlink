@@ -1,32 +1,32 @@
 [
     {
         "ip": "10.30.6.119",
-        "name": "Rack 1 Proxmox Host",
+        "name": "Rack 1",
         "location": "Lab 306"
     },
     {
         "ip": "10.30.6.129",
-        "name": "Rack 2 Proxmox Host",
+        "name": "Rack 2",
         "location": "Lab 306"
     },
     {
         "ip": "10.30.6.139",
-        "name": "Rack 3 Proxmox Host",
+        "name": "Rack 3",
         "location": "Lab 306"
     },
     {
         "ip": "10.30.6.149",
-        "name": "Rack 4 Proxmox Host",
+        "name": "Rack 4",
         "location": "Lab 306"
     },
     {
         "ip": "10.30.6.159",
-        "name": "Rack 5 Proxmox Host",
+        "name": "Rack 5",
         "location": "Lab 306"
     },
     {
         "ip": "10.30.6.169",
-        "name": "Rack 6 Proxmox Host",
+        "name": "Rack 6",
         "location": "Lab 306"
     }
 ]

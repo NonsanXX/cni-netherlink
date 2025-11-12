@@ -1,16 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netherlink | CNI 2025/2</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
+    <!-- Minecraft Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <img src="img/logo.png" alt="Netherlink" class="loading-logo">
+            <div class="loading-text">Loading...</div>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
-        <h1>Netherlink | CNI 2025/2</h1>
+        <img src="img/logo.png" alt="Netherlink | CNI 2025/2" class="logo">
         <h2>Terminal Servers</h2>
-    <p class="subtitle">Click any device to open SSH</p>
+        <p class="subtitle">Click any device to open SSH</p>
         <div class="device-grid" id="deviceGrid"></div>
 
         <h2 style="margin-top:40px;">Proxmox Hosts</h2>
@@ -23,7 +36,8 @@
         <div class="tips-modal" role="dialog" aria-modal="true" aria-label="Connection tips">
             <button id="tipsClose" class="tips-close" aria-label="Close">×</button>
             <div class="tips-title">Connection tips</div>
-            <div class="tips-note">If your SSH client (or PuTTY) can't negotiate legacy algorithms or you don't have a modern SSH client, use the command below. Otherwise, just click a device to open it.</div>
+            <div class="tips-note">If your SSH client (or PuTTY) can't negotiate legacy algorithms or you don't have a
+                modern SSH client, use the command below. Otherwise, just click a device to open it.</div>
             <div class="tips-section">
                 <div class="tips-label">OpenSSH command:</div>
                 <code id="overlaySshCmd" class="tips-code"></code>
@@ -39,13 +53,35 @@
     <div id="statusMessage" class="status-message"></div>
 
     <script>
+        // Minecraft click sound
+        const clickSound = new Audio('sounds/minecraft_click.mp3');
+        clickSound.volume = 0.5;
+
+        function playClickSound() {
+            try {
+                clickSound.currentTime = 0;
+                clickSound.play().catch(() => {});
+            } catch (e) {}
+        }
+
         const statusEl = document.getElementById('statusMessage');
         let statusTimer;
-    let devices = [];
-    let proxmoxHosts = [];
+        let devices = [];
+        let proxmoxHosts = [];
         let healthTimer = null;
-    let lastIpForHelp = null;
-    let activeTips = null; // currently open tips overlay element
+        let lastIpForHelp = null;
+        let activeTips = null; // currently open tips overlay element
+        let initialHealthCheckDone = false;
+
+        function hideLoadingScreen() {
+            const loadingScreen = document.getElementById('loadingScreen');
+            if (loadingScreen) {
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }
+        }
 
         function showStatus(message, type = 'info') {
             if (!statusEl) return;
@@ -59,30 +95,30 @@
 
         async function loadDevices() {
             try {
-                const response = await fetch('devices.json');
-                devices = await response.json();
+                // Load both devices and proxmox in parallel
+                const [devicesResponse, proxmoxResponse] = await Promise.all([
+                    fetch('devices.json'),
+                    fetch('proxmox.json')
+                ]);
+                
+                devices = await devicesResponse.json();
+                proxmoxHosts = await proxmoxResponse.json();
+                
                 renderDevices(devices);
-                startHealthMonitor();
+                renderProxmox(proxmoxHosts);
+                
+                await startHealthMonitor(); // Wait for initial health check
                 // Nothing else needed here; tips are shown per-card on demand
             } catch (error) {
                 console.error('Error loading devices:', error);
                 document.getElementById('deviceGrid').innerHTML =
                     '<p style="color:#475569; text-align:center;">Error loading devices. Please check devices.json.</p>';
-            }
-
-            // Load proxmox hosts
-            try {
-                const respPx = await fetch('proxmox.json');
-                proxmoxHosts = await respPx.json();
-                renderProxmox(proxmoxHosts);
-            } catch (e) {
-                console.error('Error loading proxmox hosts:', e);
-                const grid = document.getElementById('proxmoxGrid');
-                if (grid) grid.innerHTML = '<p style="color:#475569; text-align:center;">Error loading proxmox.json.</p>';
+                hideLoadingScreen();
             }
         }
 
         function openSSH(ip) {
+            playClickSound();
             lastIpForHelp = ip;
             // Close any open tips when navigating/opening
             closeTips();
@@ -94,6 +130,7 @@
         }
 
         function openTips(ip) {
+            playClickSound();
             const overlay = document.getElementById('tipsOverlay');
             if (!overlay) return;
             lastIpForHelp = ip;
@@ -122,6 +159,7 @@
                 card.className = 'device-card';
                 card.setAttribute('data-ip', device.ip);
                 card.onclick = () => openSSH(device.ip);
+                card.onmousedown = () => playClickSound();
                 card.innerHTML = `
                     <button class="help-icon" title="Connection tips">?</button>
                     <div class="card-row">
@@ -143,7 +181,7 @@
                         openTips(device.ip);
                     });
                 }
-                checkHealth(device.ip).catch(() => {});
+                checkHealth(device.ip).catch(() => { });
             });
         }
 
@@ -163,6 +201,7 @@
                 card.target = '_blank';
                 card.rel = 'noopener';
                 card.setAttribute('data-ip', ip);
+                card.onmousedown = () => playClickSound();
                 card.innerHTML = `
                     <div class="card-row">
                         <div>
@@ -176,8 +215,8 @@
                     </div>
                 `;
                 grid.appendChild(card);
-                    // Initial health check for Proxmox UI
-                    checkProxmoxHealth(ip).catch(() => {});
+                // Initial health check for Proxmox UI
+                checkProxmoxHealth(ip).catch(() => { });
             });
         }
 
@@ -200,22 +239,30 @@
             }
         }
 
-        function startHealthMonitor() {
+        async function startHealthMonitor() {
             if (healthTimer) clearInterval(healthTimer);
-            const runAll = () => {
-                devices.forEach(d => checkHealth(d.ip).catch(() => {}));
-                if (Array.isArray(proxmoxHosts)) {
-                    proxmoxHosts.forEach(h => checkProxmoxHealth(h.ip).catch(() => {}));
+            const runAll = async () => {
+                const deviceChecks = devices.map(d => checkHealth(d.ip).catch(() => { }));
+                const proxmoxChecks = Array.isArray(proxmoxHosts) 
+                    ? proxmoxHosts.map(h => checkProxmoxHealth(h.ip).catch(() => { }))
+                    : [];
+                
+                await Promise.all([...deviceChecks, ...proxmoxChecks]);
+                
+                // Hide loading screen after first health check completes
+                if (!initialHealthCheckDone) {
+                    initialHealthCheckDone = true;
+                    hideLoadingScreen();
                 }
             };
-            runAll();
+            await runAll();
             healthTimer = setInterval(runAll, 5000);
         }
 
         // No global toggle/copy handlers; tips are per-card popovers now
 
         loadDevices();
-        
+
         async function checkProxmoxHealth(ip) {
             const badge = document.getElementById(`status-prox-${ip.replace(/\./g, '_')}`);
             const card = document.querySelector(`#proxmoxGrid .device-card[data-ip="${ip}"]`);
@@ -257,6 +304,7 @@
         const tipsClose = document.getElementById('tipsClose');
         if (overlayCopySsh) {
             overlayCopySsh.addEventListener('click', async (e) => {
+                playClickSound();
                 e.stopPropagation();
                 const text = document.getElementById('overlaySshCmd').textContent;
                 try {
@@ -269,6 +317,7 @@
         }
         if (overlayCopyTelnet) {
             overlayCopyTelnet.addEventListener('click', async (e) => {
+                playClickSound();
                 e.stopPropagation();
                 const text = document.getElementById('overlayTelnetCmd').textContent;
                 try {
@@ -281,10 +330,12 @@
         }
         if (tipsClose) {
             tipsClose.addEventListener('click', (e) => {
+                playClickSound();
                 e.stopPropagation();
                 closeTips();
             });
         }
     </script>
 </body>
+
 </html>
