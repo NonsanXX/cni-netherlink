@@ -19,8 +19,8 @@ function pingHost(ip) {
         let args;
 
         if (platform.startsWith('win')) {
-            // Windows: -n 1 = 1 echo, -w 800 = 800ms timeout
-            args = ['-n', '1', '-w', '800', ip];
+            // Windows: -n 1 = 1 echo, -w 500 = 500ms timeout (ลดจาก 800ms)
+            args = ['-n', '1', '-w', '500', ip];
         } else if (platform === 'darwin') {
             // macOS: -c 1 and we'll enforce timeout via timer
             args = ['-c', '1', ip];
@@ -39,7 +39,7 @@ function pingHost(ip) {
                     try { child.kill('SIGKILL'); } catch {}
                     resolve(false);
                 }
-            }, PING_TIMEOUT);
+            }, 800); // ลดจาก 1500ms เป็น 800ms
 
             child.on('close', (code) => {
                 if (done) return;
@@ -60,7 +60,7 @@ function pingHost(ip) {
     });
 }
 
-function checkPort(ip, port, timeout = PORT_CHECK_TIMEOUT) {
+function checkPort(ip, port, timeout = 800) { // ลดจาก 1500ms เป็น 800ms
     return new Promise((resolve) => {
         if (!ip || !port) return resolve(false);
         const socket = new net.Socket();

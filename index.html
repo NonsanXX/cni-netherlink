@@ -20,11 +20,22 @@
         <source src="sounds/song.mp3" type="audio/mpeg">
     </audio>
 
+    <!-- Nether Portal Sound -->
+    <audio id="netherSound">
+        <source src="sounds/nether.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Portal Animation Overlay -->
+    <div id="portalOverlay" class="portal-overlay">
+        <img src="img/portal_anim.png" alt="Portal" class="portal-animation">
+    </div>
+
     <!-- Minecraft Loading Screen -->
     <div id="loadingScreen" class="loading-screen">
         <div class="loading-content">
-            <img src="img/logo.png" alt="Netherlink" class="loading-logo">
+            <img src="img/logo.png" alt="Netherlink" class="loading-logo"><br>
             <div class="loading-text">Building Terrain</div>
+            <div class="loading-status">Checking devices...</div>
             <div class="loading-bar">
                 <div class="loading-progress"></div>
             </div>
@@ -36,6 +47,7 @@
             <img src="img/logo.png" alt="Netherlink | CNI 2025/2" class="logo">
             <div class="splash-text"></div>
         </div>
+
         <h2>Terminal Servers</h2>
         <p class="subtitle">Click any device to open SSH</p>
         <div class="device-grid" id="deviceGrid"></div>
@@ -99,6 +111,30 @@
             } catch (e) {}
         }
 
+        // Nether portal sound and animation
+        const netherSound = document.getElementById('netherSound');
+        const portalOverlay = document.getElementById('portalOverlay');
+        netherSound.volume = 0.05;
+
+        function showPortalAnimation(callback) {
+            // Play nether sound
+            try {
+                netherSound.currentTime = 0;
+                netherSound.play().catch(() => {});
+            } catch (e) {}
+
+            // Show portal overlay
+            portalOverlay.classList.add('active');
+
+            // Execute callback and hide after animation
+            setTimeout(() => {
+                if (callback) callback();
+                setTimeout(() => {
+                    portalOverlay.classList.remove('active');
+                }, 500);
+            }, 1000);
+        }
+
         const statusEl = document.getElementById('statusMessage');
         let statusTimer;
         let devices = [];
@@ -135,6 +171,13 @@
             const progressBar = document.querySelector('.loading-progress');
             if (progressBar) {
                 progressBar.style.width = percent + '%';
+            }
+        }
+
+        function updateLoadingStatus(message) {
+            const statusEl = document.querySelector('.loading-status');
+            if (statusEl) {
+                statusEl.textContent = message;
             }
         }
 
@@ -183,15 +226,18 @@
         }
 
         function openSSH(ip) {
-            playClickSound();
             lastIpForHelp = ip;
             // Close any open tips when navigating/opening
             closeTips();
-            try {
-                window.location.href = `ssh://cisco@${ip}`;
-            } catch (e) {
-                showStatus('SSH handler not available on this device', 'error');
-            }
+            
+            // Show portal animation then open SSH
+            showPortalAnimation(() => {
+                try {
+                    window.location.href = `ssh://cisco@${ip}`;
+                } catch (e) {
+                    showStatus('SSH handler not available on this device', 'error');
+                }
+            });
         }
 
         function openTips(ip) {
@@ -266,7 +312,12 @@
                 card.target = '_blank';
                 card.rel = 'noopener';
                 card.setAttribute('data-ip', ip);
-                card.onmousedown = () => playClickSound();
+                card.onclick = (e) => {
+                    e.preventDefault();
+                    showPortalAnimation(() => {
+                        window.open(`https://${ip}:8006/`, '_blank', 'noopener');
+                    });
+                };
                 card.innerHTML = `
                     <div class="card-row">
                         <div>
@@ -310,11 +361,18 @@
                 const totalChecks = devices.length + (Array.isArray(proxmoxHosts) ? proxmoxHosts.length : 0);
                 let completedChecks = 0;
 
+                if (!initialHealthCheckDone) {
+                    updateLoadingStatus(`Checking ${devices.length} terminal servers...`);
+                }
+
                 const deviceChecks = devices.map(d => 
                     checkHealth(d.ip).catch(() => {}).finally(() => {
                         completedChecks++;
                         if (!initialHealthCheckDone) {
                             updateLoadingProgress((completedChecks / totalChecks) * 100);
+                            if (completedChecks === devices.length) {
+                                updateLoadingStatus(`Checking ${proxmoxHosts.length} Proxmox hosts...`);
+                            }
                         }
                     })
                 );
@@ -325,6 +383,9 @@
                             completedChecks++;
                             if (!initialHealthCheckDone) {
                                 updateLoadingProgress((completedChecks / totalChecks) * 100);
+                                if (completedChecks === totalChecks) {
+                                    updateLoadingStatus('All checks completed!');
+                                }
                             }
                         })
                     )

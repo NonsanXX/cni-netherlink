@@ -22,6 +22,44 @@
   z-index: -1;
 }
 
+/* Portal Animation Overlay */
+.portal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.portal-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.portal-animation {
+  max-width: 400px;
+  width: 80%;
+  height: auto;
+  image-rendering: pixelated;
+  animation: portalPulse 1s ease-in-out infinite;
+}
+
+@keyframes portalPulse {
+  0%, 100% { 
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% { 
+    transform: scale(1.05);
+    filter: brightness(1.2);
+  }
+}
+
 /* Minecraft Loading Screen */
 .loading-screen {
   position: fixed;
@@ -55,10 +93,17 @@
 
 .loading-text {
   color: #FFF;
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   margin-bottom: 20px;
   text-shadow: 2px 2px #3F3F3F;
-  animation: loadingPulse 1.5s ease-in-out infinite;
+  /* animation: loadingPulse 1.5s ease-in-out infinite; */
+}
+
+.loading-status {
+  color: #FFF;
+  font-size: 1rem;
+  margin-bottom: 15px;
+  text-shadow: 2px 2px #3F3F3F;
 }
 
 @keyframes loadingPulse {
