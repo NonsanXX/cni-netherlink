@@ -68,7 +68,7 @@
     <div id="tipsOverlay" class="tips-overlay" aria-hidden="true">
         <div class="tips-backdrop"></div>
         <div class="tips-modal" role="dialog" aria-modal="true" aria-label="Connection tips">
-            <button id="tipsClose" class="tips-close" aria-label="Close">×</button>
+            <!-- <button id="tipsClose" class="tips-close" aria-label="Close">×</button> -->
             <div class="tips-title">Connection tips</div>
             <div class="tips-note">If your SSH client (or PuTTY) can't negotiate legacy algorithms or you don't have a
                 modern SSH client, use the command below. Otherwise, just click a device to open it.</div>
@@ -89,7 +89,7 @@
     <script>
         // Background music
         const bgMusic = document.getElementById('bgMusic');
-        bgMusic.volume = 0.1;
+        bgMusic.volume = 1;
         
         // Play music on first user interaction
         let musicStarted = false;
@@ -102,7 +102,7 @@
 
         // Minecraft click sound
         const clickSound = new Audio('sounds/minecraft_click.mp3');
-        clickSound.volume = 0.5;
+        clickSound.volume = 1;
 
         function playClickSound() {
             try {
@@ -111,10 +111,50 @@
             } catch (e) {}
         }
 
+        // Timeout sound at 20:00 (8:00 PM Thai time)
+        const timeoutSound = new Audio('sounds/timeout.mp3');
+        timeoutSound.volume = 1;
+        let timeoutSoundPlayed = false;
+
+        async function checkTimeoutFromServer() {
+            try {
+                const response = await fetch('/timeout-check');
+                const data = await response.json();
+                
+                console.log('[Timeout Check] Server response:', data);
+                
+                if (data.shouldPlay && !timeoutSoundPlayed) {
+                    try {
+                        timeoutSound.currentTime = 0;
+                        await timeoutSound.play();
+                        timeoutSoundPlayed = true;
+                        console.log('✅ Timeout sound played at 20:00 (triggered by server)');
+                        
+                        // Reset flag after 2 minutes
+                        setTimeout(() => {
+                            timeoutSoundPlayed = false;
+                            console.log('🔄 Timeout flag reset');
+                        }, 120000);
+                    } catch (e) {
+                        console.error('❌ Error playing timeout sound:', e);
+                    }
+                } else if (data.shouldPlay && timeoutSoundPlayed) {
+                    console.log('⏭️ Timeout sound already played, skipping');
+                }
+            } catch (error) {
+                console.error('❌ Error checking timeout from server:', error);
+            }
+        }
+
+        // Check every 30 seconds for synchronized timeout alert
+        setInterval(checkTimeoutFromServer, 30000);
+        // Check immediately on load
+        checkTimeoutFromServer();
+
         // Nether portal sound and animation
         const netherSound = document.getElementById('netherSound');
         const portalOverlay = document.getElementById('portalOverlay');
-        netherSound.volume = 0.05;
+        netherSound.volume = 1;
 
         function showPortalAnimation(callback) {
             // Play nether sound
@@ -241,19 +281,25 @@
         }
 
         function openTips(ip) {
-            playClickSound();
             const overlay = document.getElementById('tipsOverlay');
             if (!overlay) return;
             lastIpForHelp = ip;
             document.getElementById('overlaySshCmd').textContent = `ssh cisco@${ip} -o KexAlgorithms=+diffie-hellman-group1-sha1 -o HostKeyAlgorithms=+ssh-rsa -c aes128-cbc`;
             document.getElementById('overlayTelnetCmd').textContent = `telnet ${ip}`;
             overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+            // Focus on close button for accessibility
+            const closeBtn = document.getElementById('tipsClose');
+            if (closeBtn) setTimeout(() => closeBtn.focus(), 100);
             activeTips = overlay;
         }
 
         function closeTips() {
             const overlay = document.getElementById('tipsOverlay');
-            if (overlay) overlay.classList.remove('visible');
+            if (overlay) {
+                overlay.classList.remove('visible');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
             activeTips = null;
         }
 
@@ -287,8 +333,14 @@
                 grid.appendChild(card);
                 const helpBtn = card.querySelector('.help-icon');
                 if (helpBtn) {
+                    // Prevent mousedown from propagating to card
+                    helpBtn.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                    });
                     helpBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
+                        e.preventDefault();
+                        playClickSound();
                         openTips(device.ip);
                     });
                 }
@@ -314,6 +366,7 @@
                 card.setAttribute('data-ip', ip);
                 card.onclick = (e) => {
                     e.preventDefault();
+                    playClickSound();
                     showPortalAnimation(() => {
                         window.open(`https://${ip}:8006/`, '_blank', 'noopener');
                     });
@@ -437,7 +490,7 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' || e.key === 'E' || e.key === 'e') {
                 closeTips();
             }
         });

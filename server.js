@@ -12,6 +12,24 @@ const PING_TIMEOUT = parseInt(process.env.PING_TIMEOUT || '1500', 10);
 const PORT_CHECK_TIMEOUT = parseInt(process.env.PORT_CHECK_TIMEOUT || '1500', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
+function shouldPlayTimeout() {
+    const now = new Date();
+    const thaiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const hours = thaiTime.getHours();
+    const minutes = thaiTime.getMinutes();
+    
+    console.log(`[Timeout Check] Current Thai time: ${hours}:${String(minutes).padStart(2, '0')}`);
+    
+    // Check if it's 20:12 - send true to ALL clients during this minute
+    // Let clients handle their own "play once" logic
+    if (hours === 20 && minutes === 0) {
+        console.log(`[Timeout Alert] 🔔 Sending timeout alert to ALL clients!`);
+        return true;
+    }
+    
+    return false;
+}
+
 function pingHost(ip) {
     return new Promise((resolve) => {
         if (!ip) return resolve(false);
@@ -180,6 +198,14 @@ const server = http.createServer((req, res) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ip, up }));
         });
+        return;
+    }
+
+    // Timeout check endpoint
+    if (req.method === 'GET' && url.pathname === '/timeout-check') {
+        const shouldPlay = shouldPlayTimeout();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ shouldPlay }));
         return;
     }
 
