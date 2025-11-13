@@ -17,12 +17,12 @@
 
     <!-- Background Music -->
     <audio id="bgMusic" loop>
-        <source src="sounds/song.mp3" type="audio/mpeg">
+        <source src="music/song.mp3" type="audio/mpeg">
     </audio>
 
     <!-- Nether Portal Sound -->
     <audio id="netherSound">
-        <source src="sounds/nether.mp3" type="audio/mpeg">
+        <source src="sfx/nether.mp3" type="audio/mpeg">
     </audio>
 
     <!-- Portal Animation Overlay -->
@@ -42,26 +42,92 @@
         </div>
     </div>
 
-    <div class="container">
+    <!-- Main Menu Page -->
+    <div class="container" id="mainMenu">
         <div class="logo-container">
-            <img src="img/logo.png" alt="Netherlink | CNI 2025/2" class="logo">
-            <div class="splash-text"></div>
+            <img src="img/logo.png" alt="CNI Netherlink" class="logo">
+            <div class="splash-text">CNI 2025/2!</div>
         </div>
+        
+        <div class="mc-menu">
+            <button class="mc-button" onclick="showServerPage('terminal')">
+                Terminal Servers
+            </button>
+            <button class="mc-button" onclick="showServerPage('proxmox')">
+                Proxmox Hosts
+            </button>
+            <div class="double">
+                <button class="mc-button" onclick="showOptionsScreen()">
+                    Options
+                </button>
+                <button class="mc-button" onclick="showQuitScreen()">
+                    Quit Game
+                </button>
+            </div>
+        </div>
+    </div>
 
-        <h2>Terminal Servers</h2>
-        <p class="subtitle">Click any device to open SSH</p>
-        <div class="device-grid" id="deviceGrid"></div>
+    <!-- Server Selection Page -->
+    <div class="server-select-container" id="serverSelectPage" style="display: none;">
+        <div class="title-bar">
+            <div class="title-text" id="pageTitle">Select Server</div>
+            <div class="subtitle-text">CNI Network Lab 306</div>
+        </div>
+        
+        <div class="server-lists">
+            <div class="server-section">
+                <div class="section-header">
+                    <span class="section-title" id="sectionTitle">Servers</span>
+                    <span class="section-count" id="sectionCount">0/0 Online</span>
+                </div>
+                <div class="server-list" id="serverList"></div>
+            </div>
+        </div>
+        
+        <div class="bottom-buttons">
+            <button class="mc-button" onclick="showMainMenu()">Back</button>
+            <button class="mc-button" id="refreshBtn">Refresh</button>
+        </div>
+    </div>
 
-        <h2 style="margin-top:40px;">Proxmox Hosts</h2>
-        <p class="subtitle">Open the Proxmox web interface</p>
-        <div class="device-grid" id="proxmoxGrid"></div>
+    <!-- Options Screen -->
+    <div class="options-screen" id="optionsScreen" style="display: none;">
+        <div class="options-content">
+            <div class="options-title">Settings</div>
+            
+            <div class="options-list">
+                <!-- Sound Volume Control -->
+                <div class="option-item">
+                    <div class="slider-container">
+                        <span class="slider-label" id="soundLabel">Sound: 100%</span>
+                        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100">
+                    </div>
+                </div>
+                <div class="option-item">
+                    <div class="slider-container">
+                        <span class="slider-label" id="musicLabel">Music: 100%</span>
+                        <input type="range" class="volume-slider" id="musicSlider" min="0" max="100" value="100">
+                    </div>
+                </div>
+            </div>
+            
+            <button class="mc-button done-button" onclick="closeOptions()">Done</button>
+        </div>
+    </div>
+
+    <!-- Quit Error Screen -->
+    <div class="quit-screen" id="quitScreen" style="display: none;">
+        <div class="quit-content">
+            <div class="quit-title">Failed to quit the game</div>
+            <div class="quit-subtitle">You will have to continue this path with suffer:</div>
+            <button class="mc-button" onclick="backFromQuit()">Back to Main Menu</button>
+        </div>
     </div>
 
     <!-- Footer -->
-    <footer class="footer">
+    <footer class="footer" id="mainFooter">
         Made with <img src="img/heart.png" alt="love" class="heart-icon"> by 
         <a href="https://github.com/NonsanXX" target="_blank" rel="noopener" class="footer-link">@Phuriphat</a>
-        and friends.
     </footer>
 
     <!-- Global tips overlay (above everything) -->
@@ -90,6 +156,39 @@
         // Background music
         const bgMusic = document.getElementById('bgMusic');
         bgMusic.volume = 1;
+
+        // Volume controls
+        const volumeSlider = document.getElementById('volumeSlider');
+        const soundLabel = document.getElementById('soundLabel');
+        const musicSlider = document.getElementById('musicSlider');
+        const musicLabel = document.getElementById('musicLabel');
+
+        // Sound effects volume control
+        function updateVolume(value) {
+            const volume = value / 100;
+            clickSound.volume = volume;
+            timeoutSound.volume = volume;
+            soundLabel.textContent = `Sound: ${value}%`;
+        }
+
+        if (volumeSlider) {
+            volumeSlider.addEventListener('input', (e) => {
+                updateVolume(e.target.value);
+            });
+        }
+
+        // Music volume control
+        function updateMusicVolume(value) {
+            const volume = value / 100;
+            bgMusic.volume = volume;
+            musicLabel.textContent = `Music: ${value}%`;
+        }
+
+        if (musicSlider) {
+            musicSlider.addEventListener('input', (e) => {
+                updateMusicVolume(e.target.value);
+            });
+        }
         
         // Play music on first user interaction
         let musicStarted = false;
@@ -101,7 +200,7 @@
         }, { once: true });
 
         // Minecraft click sound
-        const clickSound = new Audio('sounds/minecraft_click.mp3');
+        const clickSound = new Audio('sfx/minecraft_click.mp3');
         clickSound.volume = 1;
 
         function playClickSound() {
@@ -112,7 +211,7 @@
         }
 
         // Timeout sound at 20:00 (8:00 PM Thai time)
-        const timeoutSound = new Audio('sounds/timeout.mp3');
+        const timeoutSound = new Audio('sfx/timeout.mp3');
         timeoutSound.volume = 1;
         let timeoutSoundPlayed = false;
 
@@ -193,6 +292,70 @@
         let lastIpForHelp = null;
         let activeTips = null; // currently open tips overlay element
         let initialHealthCheckDone = false;
+        let currentPage = 'main'; // 'main', 'terminal', or 'proxmox'
+
+        // Page navigation functions
+        function showMainMenu() {
+            playClickSound();
+            currentPage = 'main';
+            document.getElementById('mainMenu').style.display = 'flex';
+            document.getElementById('serverSelectPage').style.display = 'none';
+            document.getElementById('optionsScreen').style.display = 'none';
+            document.getElementById('quitScreen').style.display = 'none';
+            document.getElementById('mainFooter').style.display = 'block';
+        }
+
+        function showOptionsScreen() {
+            playClickSound();
+            document.getElementById('mainMenu').style.display = 'none';
+            document.getElementById('serverSelectPage').style.display = 'none';
+            document.getElementById('optionsScreen').style.display = 'flex';
+            document.getElementById('quitScreen').style.display = 'none';
+            document.getElementById('mainFooter').style.display = 'none';
+        }
+
+        function closeOptions() {
+            playClickSound();
+            showMainMenu();
+        }
+
+        function showQuitScreen() {
+            playClickSound();
+            document.getElementById('mainMenu').style.display = 'none';
+            document.getElementById('serverSelectPage').style.display = 'none';
+            document.getElementById('optionsScreen').style.display = 'none';
+            document.getElementById('quitScreen').style.display = 'flex';
+            document.getElementById('mainFooter').style.display = 'none';
+        }
+
+        function backFromQuit() {
+            playClickSound();
+            showMainMenu();
+        }
+
+        function showServerPage(type) {
+            playClickSound();
+            currentPage = type;
+            document.getElementById('mainMenu').style.display = 'none';
+            document.getElementById('serverSelectPage').style.display = 'flex';
+            document.getElementById('mainFooter').style.display = 'none';
+            
+            const serverList = document.getElementById('serverList');
+            const pageTitle = document.getElementById('pageTitle');
+            const sectionTitle = document.getElementById('sectionTitle');
+            
+            if (type === 'terminal') {
+                pageTitle.textContent = 'Terminal Servers';
+                sectionTitle.textContent = 'Terminal Servers';
+                serverList.innerHTML = '';
+                renderDevicesInPage(devices);
+            } else if (type === 'proxmox') {
+                pageTitle.textContent = 'Proxmox Hosts';
+                sectionTitle.textContent = 'Proxmox Hosts';
+                serverList.innerHTML = '';
+                renderProxmoxInPage(proxmoxHosts);
+            }
+        }
 
         // Load and set random splash text (for main page only)
         async function setRandomSplash() {
@@ -314,36 +477,35 @@
         }
 
         function renderDevices(list) {
-            const grid = document.getElementById('deviceGrid');
+            // Main menu now only has buttons, no cards to render
+        }
+
+        function renderDevicesInPage(list) {
+            const grid = document.getElementById('serverList');
             grid.innerHTML = '';
             if (!list || list.length === 0) {
-                grid.innerHTML = '<p style="color:#475569; text-align:center;">No devices found.</p>';
+                grid.innerHTML = '<p style="color:#DDD; text-align:center; padding: 20px;">No devices found.</p>';
                 return;
             }
             list.forEach(device => {
                 const ipId = device.ip.replace(/\./g, '_');
-                const card = document.createElement('div');
-                card.className = 'device-card';
-                card.setAttribute('data-ip', device.ip);
-                card.onclick = () => openSSH(device.ip);
-                card.onmousedown = () => playClickSound();
-                card.innerHTML = `
-                    <button class="help-icon" title="Connection tips">?</button>
-                    <div class="card-row">
-                        <div>
-                            <div class="device-ip">${device.ip}</div>
-                            <div class="device-name">${device.name}</div>
-                            <div class="device-location">${device.location}</div>
-                        </div>
-                        <div>
-                            <div class="device-status" id="status-${ipId}"></div>
-                        </div>
+                const item = document.createElement('div');
+                item.className = 'server-item';
+                item.setAttribute('data-ip', device.ip);
+                item.setAttribute('data-type', 'terminal');
+                item.onclick = () => openSSH(device.ip);
+                item.onmousedown = () => playClickSound();
+                item.innerHTML = `
+                    <div class="status-indicator" id="page-status-${ipId}"></div>
+                    <div class="server-info">
+                        <div class="server-ip">${device.ip}</div>
+                        <div class="server-name">${device.name} - ${device.location}</div>
                     </div>
+                    <div class="help-icon-inline" title="Connection tips">?</div>
                 `;
-                grid.appendChild(card);
-                const helpBtn = card.querySelector('.help-icon');
+                grid.appendChild(item);
+                const helpBtn = item.querySelector('.help-icon-inline');
                 if (helpBtn) {
-                    // Prevent mousedown from propagating to card
                     helpBtn.addEventListener('mousedown', (e) => {
                         e.stopPropagation();
                     });
@@ -354,68 +516,85 @@
                         openTips(device.ip);
                     });
                 }
-                checkHealth(device.ip).catch(() => { });
+                updateDeviceStatusInPage(device.ip);
             });
+            updatePageServerCount();
         }
 
         function renderProxmox(list) {
-            const grid = document.getElementById('proxmoxGrid');
-            if (!grid) return;
+            // Main menu now only has buttons, no cards to render
+        }
+
+        function renderProxmoxInPage(list) {
+            const grid = document.getElementById('serverList');
             grid.innerHTML = '';
             if (!list || list.length === 0) {
-                grid.innerHTML = '<p style="color:#475569; text-align:center;">No Proxmox hosts found.</p>';
+                grid.innerHTML = '<p style="color:#DDD; text-align:center; padding: 20px;">No Proxmox hosts found.</p>';
                 return;
             }
             list.forEach(host => {
                 const ip = host.ip;
-                const card = document.createElement('a');
-                card.className = 'device-card';
-                card.href = `https://${ip}:8006/`;
-                card.target = '_blank';
-                card.rel = 'noopener';
-                card.setAttribute('data-ip', ip);
-                card.onclick = (e) => {
+                const ipId = ip.replace(/\./g, '_');
+                const item = document.createElement('div');
+                item.className = 'server-item';
+                item.setAttribute('data-ip', ip);
+                item.setAttribute('data-type', 'proxmox');
+                item.onclick = (e) => {
                     e.preventDefault();
                     playClickSound();
                     showPortalAnimation(() => {
                         window.open(`https://${ip}:8006/`, '_blank', 'noopener');
                     });
                 };
-                card.innerHTML = `
-                    <div class="card-row">
-                        <div>
-                            <div class="device-ip">${host.ip}</div>
-                            <div class="device-name">${host.name || 'Proxmox VE'}</div>
-                            <div class="device-location">${host.location || ''}</div>
-                        </div>
-                        <div>
-                            <div class="device-status" id="status-prox-${ip.replace(/\./g, '_')}"></div>
-                        </div>
+                item.innerHTML = `
+                    <div class="status-indicator" id="page-proxmox-status-${ipId}"></div>
+                    <div class="server-info">
+                        <div class="server-ip">${ip}</div>
+                        <div class="server-name">${host.name} - ${host.location}</div>
                     </div>
                 `;
-                grid.appendChild(card);
-                // Initial health check for Proxmox UI
-                checkProxmoxHealth(ip).catch(() => { });
+                grid.appendChild(item);
+                updateProxmoxStatusInPage(ip);
             });
+            updatePageServerCount();
         }
 
         async function checkHealth(ip) {
-            const card = document.querySelector(`.device-card[data-ip="${ip}"]`);
-            const badge = document.getElementById(`status-${ip.replace(/\./g, '_')}`);
             try {
                 const res = await fetch(`/health?ip=${encodeURIComponent(ip)}`);
                 const data = await res.json();
-                if (data.up) {
-                    card && card.classList.remove('offline');
-                    if (badge) { badge.textContent = 'Up'; badge.classList.add('up'); badge.classList.remove('down'); }
-                } else {
-                    card && card.classList.add('offline');
-                    if (badge) { badge.textContent = 'Down'; badge.classList.add('down'); badge.classList.remove('up'); }
+                const device = devices.find(d => d.ip === ip);
+                if (device) {
+                    device.online = data.up;
+                }
+                if (currentPage === 'terminal') {
+                    updateDeviceStatusInPage(ip);
                 }
             } catch (e) {
-                card && card.classList.add('offline');
-                if (badge) { badge.textContent = 'Down'; badge.classList.add('down'); badge.classList.remove('up'); }
+                const device = devices.find(d => d.ip === ip);
+                if (device) {
+                    device.online = false;
+                }
+                if (currentPage === 'terminal') {
+                    updateDeviceStatusInPage(ip);
+                }
             }
+        }
+
+        function updateDeviceStatusInPage(ip) {
+            const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="terminal"]`);
+            const badge = document.getElementById(`page-status-${ip.replace(/\./g, '_')}`);
+            const device = devices.find(d => d.ip === ip);
+            if (!device) return;
+            
+            if (device.online) {
+                item && item.classList.remove('offline');
+                if (badge) { badge.classList.add('online'); badge.classList.remove('offline'); }
+            } else {
+                item && item.classList.add('offline');
+                if (badge) { badge.classList.add('offline'); badge.classList.remove('online'); }
+            }
+            updatePageServerCount();
         }
 
         async function startHealthMonitor() {
@@ -468,25 +647,75 @@
 
         // No global toggle/copy handlers; tips are per-card popovers now
 
+        // Update page server count
+        function updatePageServerCount() {
+            const items = document.querySelectorAll('#serverList .server-item');
+            let onlineCount = 0;
+            items.forEach(item => {
+                if (!item.classList.contains('offline')) onlineCount++;
+            });
+            
+            const countSpan = document.getElementById('sectionCount');
+            if (countSpan) {
+                countSpan.textContent = `${onlineCount}/${items.length} Online`;
+            }
+        }
+
+        // Refresh button
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            playClickSound();
+            showStatus('Refreshing server status...', 'info');
+            
+            // Re-check all health statuses
+            if (currentPage === 'terminal') {
+                devices.forEach(d => checkHealth(d.ip).catch(() => {}));
+            } else if (currentPage === 'proxmox') {
+                proxmoxHosts.forEach(h => checkProxmoxHealth(h.ip).catch(() => {}));
+            }
+            
+            setTimeout(() => {
+                showStatus('Refresh complete!', 'success');
+            }, 1000);
+        });
+
         loadDevices();
 
         async function checkProxmoxHealth(ip) {
-            const badge = document.getElementById(`status-prox-${ip.replace(/\./g, '_')}`);
-            const card = document.querySelector(`#proxmoxGrid .device-card[data-ip="${ip}"]`);
             try {
                 const res = await fetch(`/proxmox-health?ip=${encodeURIComponent(ip)}`);
                 const data = await res.json();
-                if (data.up) {
-                    if (badge) { badge.textContent = 'Up'; badge.classList.add('up'); badge.classList.remove('down'); }
-                    if (card) card.classList.remove('offline');
-                } else {
-                    if (badge) { badge.textContent = 'Down'; badge.classList.add('down'); badge.classList.remove('up'); }
-                    if (card) card.classList.add('offline');
+                const host = proxmoxHosts.find(h => h.ip === ip);
+                if (host) {
+                    host.online = data.up;
+                }
+                if (currentPage === 'proxmox') {
+                    updateProxmoxStatusInPage(ip);
                 }
             } catch (e) {
-                if (badge) { badge.textContent = 'Down'; badge.classList.add('down'); badge.classList.remove('up'); }
-                if (card) card.classList.add('offline');
+                const host = proxmoxHosts.find(h => h.ip === ip);
+                if (host) {
+                    host.online = false;
+                }
+                if (currentPage === 'proxmox') {
+                    updateProxmoxStatusInPage(ip);
+                }
             }
+        }
+
+        function updateProxmoxStatusInPage(ip) {
+            const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="proxmox"]`);
+            const badge = document.getElementById(`page-proxmox-status-${ip.replace(/\./g, '_')}`);
+            const host = proxmoxHosts.find(h => h.ip === ip);
+            if (!host) return;
+            
+            if (host.online) {
+                item && item.classList.remove('offline');
+                if (badge) { badge.classList.add('online'); badge.classList.remove('offline'); }
+            } else {
+                item && item.classList.add('offline');
+                if (badge) { badge.classList.add('offline'); badge.classList.remove('online'); }
+            }
+            updatePageServerCount();
         }
 
         // Dismiss tips on outside click or Escape
