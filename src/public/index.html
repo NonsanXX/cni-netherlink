@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netherlink</title>
     <link rel="icon" type="image/x-icon" href="img/icon.ico">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 
 <body>
@@ -116,19 +116,29 @@
         timeoutSound.volume = 1;
         let timeoutSoundPlayed = false;
 
-        async function checkTimeoutFromServer() {
+        // Use Server-Sent Events for real-time timeout notifications
+        const timeoutEventSource = new EventSource('/timeout-events');
+        
+        timeoutEventSource.onopen = () => {
+            console.log('✅ SSE connection established for timeout alerts');
+        };
+
+        timeoutEventSource.onmessage = async (event) => {
             try {
-                const response = await fetch('/timeout-check');
-                const data = await response.json();
+                const data = JSON.parse(event.data);
                 
-                console.log('[Timeout Check] Server response:', data);
+                if (data.connected) {
+                    console.log('🔗 Connected to timeout notification service');
+                    return;
+                }
                 
                 if (data.shouldPlay && !timeoutSoundPlayed) {
+                    console.log('🔔 Timeout alert received from server!');
                     try {
                         timeoutSound.currentTime = 0;
                         await timeoutSound.play();
                         timeoutSoundPlayed = true;
-                        console.log('✅ Timeout sound played at 20:00 (triggered by server)');
+                        console.log(`Freddy is coming at ${new Date().toLocaleTimeString()} (SSE)`);
                         
                         // Reset flag after 2 minutes
                         setTimeout(() => {
@@ -141,15 +151,15 @@
                 } else if (data.shouldPlay && timeoutSoundPlayed) {
                     console.log('⏭️ Timeout sound already played, skipping');
                 }
-            } catch (error) {
-                console.error('❌ Error checking timeout from server:', error);
+            } catch (e) {
+                console.error('❌ Error parsing SSE data:', e);
             }
-        }
+        };
 
-        // Check every 30 seconds for synchronized timeout alert
-        setInterval(checkTimeoutFromServer, 30000);
-        // Check immediately on load
-        checkTimeoutFromServer();
+        timeoutEventSource.onerror = (error) => {
+            console.error('❌ SSE connection error:', error);
+            // EventSource will automatically reconnect
+        };
 
         // Nether portal sound and animation
         const netherSound = document.getElementById('netherSound');
@@ -187,7 +197,7 @@
         // Load and set random splash text (for main page only)
         async function setRandomSplash() {
             try {
-                const response = await fetch('splashtext.json');
+                const response = await fetch('/config/splashtext.json');
                 const splashTexts = await response.json();
                 const splashEl = document.querySelector('.container .splash-text');
                 if (splashEl && splashTexts.length > 0) {
@@ -245,8 +255,8 @@
             try {
                 // Load both devices and proxmox in parallel
                 const [devicesResponse, proxmoxResponse] = await Promise.all([
-                    fetch('devices.json'),
-                    fetch('proxmox.json')
+                    fetch('/config/devices.json'),
+                    fetch('/config/proxmox.json')
                 ]);
                 
                 devices = await devicesResponse.json();

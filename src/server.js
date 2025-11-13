@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const http = require('http');
 const os = require('os');
 const fs = require('fs');
@@ -11,24 +11,47 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const PING_TIMEOUT = parseInt(process.env.PING_TIMEOUT || '1500', 10);
 const PORT_CHECK_TIMEOUT = parseInt(process.env.PORT_CHECK_TIMEOUT || '1500', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+const HOUR_TIMEOUT = parseInt(process.env.HOUR_TIMEOUT || '20', 10);
+const MINUTE_TIMEOUT = parseInt(process.env.MINUTE_TIMEOUT || '00', 10);
+
+
+// Store all SSE clients
+const sseClients = new Set();
+let lastTimeoutMinute = -1;
 
 function shouldPlayTimeout() {
     const now = new Date();
     const thaiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
     const hours = thaiTime.getHours();
     const minutes = thaiTime.getMinutes();
-    
-    console.log(`[Timeout Check] Current Thai time: ${hours}:${String(minutes).padStart(2, '0')}`);
-    
-    // Check if it's 20:12 - send true to ALL clients during this minute
-    // Let clients handle their own "play once" logic
-    if (hours === 20 && minutes === 0) {
-        console.log(`[Timeout Alert] 🔔 Sending timeout alert to ALL clients!`);
-        return true;
+
+    // Check if it's 20:43 Thai time
+    if (hours === HOUR_TIMEOUT && minutes === MINUTE_TIMEOUT) {
+        // Only trigger once per minute
+        if (lastTimeoutMinute !== minutes) {
+            lastTimeoutMinute = minutes;
+            console.log(`[Timeout Alert] 🔔 It's ${HOUR_TIMEOUT}:${MINUTE_TIMEOUT.toString().padStart(2, '0')}! Sending alert to ${sseClients.size} clients`);
+            return true;
+        }
+    } else {
+        lastTimeoutMinute = -1;
     }
-    
+
     return false;
 }
+
+// Check every second and notify all SSE clients if it's timeout time
+setInterval(() => {
+    if (shouldPlayTimeout()) {
+        sseClients.forEach(client => {
+            try {
+                client.write('data: {"shouldPlay":true}\n\n');
+            } catch (e) {
+                sseClients.delete(client);
+            }
+        });
+    }
+}, 1000);
 
 function pingHost(ip) {
     return new Promise((resolve) => {
@@ -54,7 +77,7 @@ function pingHost(ip) {
             const timer = setTimeout(() => {
                 if (!done) {
                     done = true;
-                    try { child.kill('SIGKILL'); } catch {}
+                    try { child.kill('SIGKILL'); } catch { }
                     resolve(false);
                 }
             }, 800); // ลดจาก 1500ms เป็น 800ms
@@ -85,7 +108,7 @@ function checkPort(ip, port, timeout = 800) { // ลดจาก 1500ms เป�
         let settled = false;
 
         const cleanup = () => {
-            try { socket.destroy(); } catch {}
+            try { socket.destroy(); } catch { }
         };
 
         socket.setTimeout(timeout);
@@ -123,7 +146,7 @@ const mimeTypes = {
     '.ttc': 'font/collection'
 };
 
-const publicDir = __dirname;
+const publicDir = path.join(__dirname, 'public');
 
 function serveStatic(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -201,11 +224,69 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Timeout check endpoint
-    if (req.method === 'GET' && url.pathname === '/timeout-check') {
-        const shouldPlay = shouldPlayTimeout();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ shouldPlay }));
+    // SSE endpoint for timeout notifications
+    if (req.method === 'GET' && url.pathname === '/timeout-events') {
+        // Set timeout to 0 (infinite) for SSE
+        req.setTimeout(0);
+        res.setTimeout(0);
+        
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no', // Disable nginx buffering
+            'Access-Control-Allow-Origin': CORS_ORIGIN
+        });
+
+        // Add client to SSE clients set
+        sseClients.add(res);
+        console.log(`[SSE] Client connected. Total clients: ${sseClients.size}`);
+
+        // Send initial connection message
+        res.write('data: {"connected":true}\n\n');
+
+        // Keep connection alive with heartbeat every 15 seconds (reduced from 30)
+        const heartbeat = setInterval(() => {
+            try {
+                res.write(': heartbeat\n\n');
+            } catch (e) {
+                clearInterval(heartbeat);
+                sseClients.delete(res);
+                console.log(`[SSE] Heartbeat failed, client removed`);
+            }
+        }, 15000);
+
+        // Handle errors
+        res.on('error', (err) => {
+            console.log(`[SSE] Response error:`, err.message);
+            clearInterval(heartbeat);
+            sseClients.delete(res);
+        });
+
+        // Clean up on client disconnect
+        req.on('close', () => {
+            clearInterval(heartbeat);
+            sseClients.delete(res);
+            console.log(`[SSE] Client disconnected. Total clients: ${sseClients.size}`);
+        });
+
+        return;
+    }
+
+    // Serve config files
+    if (req.method === 'GET' && url.pathname.startsWith('/config/')) {
+        const configFile = url.pathname.replace('/config/', '');
+        const configPath = path.join(__dirname, '..', 'config', configFile);
+
+        fs.readFile(configPath, 'utf8', (err, data) => {
+            if (err) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Config file not found' }));
+                return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(data);
+        });
         return;
     }
 
@@ -220,11 +301,18 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ error: 'Not found' }));
 });
 
+// Set server timeout to 0 (infinite) to support SSE
+server.timeout = 0;
+server.keepAliveTimeout = 0;
+server.headersTimeout = 0;
+
 server.listen(PORT, () => {
     console.log(`[${NODE_ENV}] Server is running on http://localhost:${PORT}`);
     if (NODE_ENV === 'development') {
         console.log(`CORS Origin: ${CORS_ORIGIN}`);
         console.log(`Ping Timeout: ${PING_TIMEOUT}ms`);
         console.log(`Port Check Timeout: ${PORT_CHECK_TIMEOUT}ms`);
+        console.log(`SSE: Enabled with infinite timeout`);
+        console.log(`Timeout Alert Time: ${HOUR_TIMEOUT}:${MINUTE_TIMEOUT.toString().padStart(2, '0')} Thai Time`);
     }
 });
