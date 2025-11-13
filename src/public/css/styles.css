@@ -260,10 +260,10 @@ body {
 }
 
 .options-title {
-  font-size: 2rem;
+  font-size: 1.3rem;
   color: #FFF;
   text-shadow: 3px 3px #3F3F3F;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .options-list {
@@ -515,8 +515,14 @@ body {
 /* Server Lists */
 .server-lists {
   padding: 20px;
-  max-height: 500px;
-  overflow-y: auto;
+  max-height: 600px;
+  overflow-y: scroll;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.server-lists::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
 }
 
 .server-section {
@@ -699,7 +705,7 @@ body {
 
 .splash-text {
   position: absolute;
-  top: 80px;
+  top: 100px;
   right: 50%;
   transform: translateX(335px) rotate(-20deg);
   color: #FFFF00;
