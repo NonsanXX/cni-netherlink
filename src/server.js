@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const net = require('net');
+const snmp = require('snmp-native');
 
 const PORT = process.env.PORT || 4567;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -55,12 +56,12 @@ setInterval(() => {
 
 function pingHost(ip) {
     return new Promise((resolve) => {
-        if (!ip) return resolve(false);
+        if (!ip) return resolve({ up: false, latency: null });
         const platform = os.platform();
         let args;
 
         if (platform.startsWith('win')) {
-            // Windows: -n 1 = 1 echo, -w 500 = 500ms timeout (ลดจาก 800ms)
+            // Windows: -n 1 = 1 echo, -w 500 = 500ms timeout
             args = ['-n', '1', '-w', '500', ip];
         } else if (platform === 'darwin') {
             // macOS: -c 1 and we'll enforce timeout via timer
@@ -73,30 +74,52 @@ function pingHost(ip) {
         try {
             const child = spawn('ping', args);
             let done = false;
+            let output = '';
 
             const timer = setTimeout(() => {
                 if (!done) {
                     done = true;
                     try { child.kill('SIGKILL'); } catch { }
-                    resolve(false);
+                    resolve({ up: false, latency: null });
                 }
-            }, 800); // ลดจาก 1500ms เป็น 800ms
+            }, 800);
+
+            child.stdout.on('data', (data) => {
+                output += data.toString();
+            });
 
             child.on('close', (code) => {
                 if (done) return;
                 done = true;
                 clearTimeout(timer);
-                resolve(code === 0);
+
+                if (code !== 0) {
+                    return resolve({ up: false, latency: null });
+                }
+
+                // Parse latency from ping output
+                let latency = null;
+                if (platform.startsWith('win')) {
+                    // Windows format: "time=1ms" or "time<1ms"
+                    const match = output.match(/time[=<](\d+)ms/i);
+                    if (match) latency = parseInt(match[1], 10);
+                } else {
+                    // Unix format: "time=1.23 ms"
+                    const match = output.match(/time=(\d+\.?\d*)\s*ms/i);
+                    if (match) latency = Math.round(parseFloat(match[1]));
+                }
+
+                resolve({ up: true, latency });
             });
 
             child.on('error', () => {
                 if (done) return;
                 done = true;
                 clearTimeout(timer);
-                resolve(false);
+                resolve({ up: false, latency: null });
             });
         } catch {
-            resolve(false);
+            resolve({ up: false, latency: null });
         }
     });
 }
@@ -130,6 +153,90 @@ function checkPort(ip, port, timeout = 800) { // ลดจาก 1500ms เป�
     });
 }
 
+// SNMP connection count check
+function getConnectionCount(ip, community = 'netlink', timeout = 5000) {
+    return new Promise((resolve) => {
+        if (!ip) return resolve(0);
+
+        let session;
+        let settled = false;
+
+        // Timeout handler
+        const timeoutHandle = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                if (session) {
+                    try { session.close(); } catch (e) { }
+                }
+                console.error(`SNMP timeout for ${ip} after ${timeout}ms`);
+                resolve(0);
+            }
+        }, timeout);
+
+        try {
+            session = new snmp.Session({
+                host: ip,
+                community: community,
+                timeouts: [timeout - 500],  // Set SNMP timeout slightly less than our timeout
+                port: 161
+            });
+
+            // Query TCP connection table (OID: 1.3.6.1.2.1.6.13)
+            session.getSubtree({ oid: [1, 3, 6, 1, 2, 1, 6, 13] }, (error, varbinds) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutHandle);
+
+                try { session.close(); } catch (e) { }
+
+                if (error) {
+                    console.error(`SNMP error for ${ip}:`, error.message);
+                    return resolve(0);
+                }
+
+                if (!varbinds || varbinds.length === 0) {
+                    return resolve(0);
+                }
+
+                // Filter for established connections on ports 22 (SSH) and 23 (Telnet)
+                let count = 0;
+
+                varbinds.forEach((vb) => {
+                    const oid = vb.oid.join('.');
+                    const value = vb.value;
+
+                    // OID format: 1.3.6.1.2.1.6.13.1.1.[local_ip].[local_port].[remote_ip].[remote_port]
+                    // We need to check if local_port is 22 or 23, and value (state) is 5 (established)
+                    const parts = oid.split('.');
+
+                    // Find the local port position (after the 4 octets of local IP)
+                    // Format: 1.3.6.1.2.1.6.13.1.1 = indices 0-9
+                    // Local IP = indices 10-13 (4 octets)
+                    // Local Port = index 14
+                    if (parts.length >= 15) {
+                        const localPort = parseInt(parts[14], 10);
+                        const state = value;
+
+                        // Check if port 22 (SSH) or 23 (Telnet) and state is established (5)
+                        if ((localPort === 22 || localPort === 23) && state === 5) {
+                            count++;
+                        }
+                    }
+                });
+
+                resolve(count);
+            });
+        } catch (error) {
+            if (!settled) {
+                settled = true;
+                clearTimeout(timeoutHandle);
+                console.error(`SNMP exception for ${ip}:`, error.message);
+                resolve(0);
+            }
+        }
+    });
+}
+
 const mimeTypes = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
@@ -147,6 +254,45 @@ const mimeTypes = {
 };
 
 const publicDir = path.join(__dirname, 'public');
+
+function fetchProxmoxConnectionCount(ip) {
+    return new Promise((resolve) => {
+        const targetHost = (typeof ip === 'string' && ip.trim().length > 0) ? ip.trim() : '10.30.6.119';
+        const options = {
+            hostname: targetHost,
+            port: 8080,
+            path: '/api/connection_count',
+            method: 'GET',
+            timeout: 2000
+        };
+
+        const req = http.request(options, (resp) => {
+            let data = '';
+            resp.on('data', chunk => data += chunk);
+            resp.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    resolve(parsed);
+                } catch (e) {
+                    console.error(`Failed to parse proxmox connection count for ${targetHost}:`, e.message);
+                    resolve({ established_connections: 0, port: 8006 });
+                }
+            });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ established_connections: 0, port: 8006 });
+        });
+
+        req.on('error', (err) => {
+            console.error(`Error fetching proxmox connection count for ${targetHost}:`, err.message);
+            resolve({ established_connections: 0, port: 8006 });
+        });
+
+        req.end();
+    });
+}
 
 function serveStatic(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -207,9 +353,9 @@ const server = http.createServer((req, res) => {
     // Health endpoint must be checked BEFORE static serving
     if (req.method === 'GET' && url.pathname === '/health') {
         const ip = url.searchParams.get('ip') || '';
-        pingHost(ip).then((up) => {
+        pingHost(ip).then((result) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ip, up }));
+            res.end(JSON.stringify({ ip, up: result.up, latency: result.latency }));
         });
         return;
     }
@@ -217,9 +363,44 @@ const server = http.createServer((req, res) => {
     // Proxmox health: TCP check to 8006 (HTTPS UI)
     if (req.method === 'GET' && url.pathname === '/proxmox-health') {
         const ip = url.searchParams.get('ip') || '';
-        checkPort(ip, 8006).then((up) => {
+        Promise.all([
+            checkPort(ip, 8006),
+            pingHost(ip)
+        ]).then(([up, pingResult]) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ip, up }));
+            res.end(JSON.stringify({ ip, up, latency: pingResult.latency, pingUp: pingResult.up }));
+        }).catch(() => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, up: false, latency: null, pingUp: false }));
+        });
+        return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/proxmox-connection-count') {
+        const ip = url.searchParams.get('ip');
+        if (!ip) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing ip parameter' }));
+            return;
+        }
+
+        fetchProxmoxConnectionCount(ip).then((data) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, ...data }));
+        }).catch(() => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, established_connections: 0, port: 8006 }));
+        });
+        return;
+    }
+
+    // SNMP connection count endpoint
+    if (req.method === 'GET' && url.pathname === '/connection-count') {
+        const ip = url.searchParams.get('ip') || '';
+        const community = url.searchParams.get('community') || 'netlink';
+        getConnectionCount(ip, community).then((count) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, count }));
         });
         return;
     }
@@ -229,7 +410,7 @@ const server = http.createServer((req, res) => {
         // Set timeout to 0 (infinite) for SSE
         req.setTimeout(0);
         res.setTimeout(0);
-        
+
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
