@@ -17,7 +17,7 @@
 
     <!-- Background Music -->
     <audio id="bgMusic" loop>
-        <source src="music/song.mp3" type="audio/mpeg">
+        <source src="music/mainmenu_music.mp3" type="audio/mpeg">
     </audio>
 
     <!-- Nether Portal Sound -->
@@ -158,6 +158,30 @@
     <div id="statusMessage" class="status-message"></div>
 
     <script>
+        // Background panorama video fallback to enforce looping in browsers that drop autoplay
+        const bgVideo = document.getElementById('bgVideo');
+        if (bgVideo) {
+            const restartBgVideo = () => {
+                try {
+                    bgVideo.currentTime = 0;
+                    const playPromise = bgVideo.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(() => { });
+                    }
+                } catch (err) {
+                    console.warn('Unable to resume panorama video', err);
+                }
+            };
+
+            bgVideo.addEventListener('ended', restartBgVideo);
+
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && bgVideo.paused) {
+                    restartBgVideo();
+                }
+            });
+        }
+
         // Background music
         const bgMusic = document.getElementById('bgMusic');
         bgMusic.volume = 1;
@@ -726,11 +750,6 @@
                     })
                 );
 
-                // Also check connection counts for terminal servers
-                const connectionChecks = devices.map(d =>
-                    checkConnectionCount(d.ip).catch(() => { })
-                );
-
                 const proxmoxChecks = Array.isArray(proxmoxHosts)
                     ? proxmoxHosts.map(h =>
                         checkProxmoxHealth(h.ip).catch(() => { }).finally(() => {
@@ -745,11 +764,14 @@
                     )
                     : [];
 
+                // Fire connection/usage checks in the background so the loading screen isn't blocked by slow/down devices
+                const connectionChecks = devices.map(d => checkConnectionCount(d.ip).catch(() => { }));
                 const proxmoxConnectionChecks = Array.isArray(proxmoxHosts)
                     ? proxmoxHosts.map(h => fetchProxmoxConnectionCount(h.ip).catch(() => { }))
                     : [];
+                [...connectionChecks, ...proxmoxConnectionChecks].forEach(p => p.catch(() => { }));
 
-                await Promise.all([...deviceChecks, ...connectionChecks, ...proxmoxChecks, ...proxmoxConnectionChecks]);
+                await Promise.all([...deviceChecks, ...proxmoxChecks]);
 
                 // Hide loading screen after first health check completes
                 if (!initialHealthCheckDone) {
