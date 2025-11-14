@@ -172,6 +172,7 @@
         function updateVolume(value) {
             const volume = value / 100;
             clickSound.volume = volume;
+            timeoutSound.volume = volume;
             soundLabel.textContent = `Sound: ${value}%`;
         }
 
@@ -220,13 +221,27 @@
         let timeoutSoundPlayed = false;
 
         // Use Server-Sent Events for real-time timeout notifications
-        const timeoutEventSource = new EventSource('/timeout-events');
+        let timeoutEventSource = null;
+        let timeoutEventReconnectTimer = null;
 
-        timeoutEventSource.onopen = () => {
-            console.log('✅ SSE connection established for timeout alerts');
-        };
+        function cleanupTimeoutEvents() {
+            if (timeoutEventSource) {
+                try {
+                    timeoutEventSource.close();
+                } catch { }
+                timeoutEventSource = null;
+            }
+        }
 
-        timeoutEventSource.onmessage = async (event) => {
+        function scheduleTimeoutReconnect() {
+            if (timeoutEventReconnectTimer) return;
+            timeoutEventReconnectTimer = setTimeout(() => {
+                timeoutEventReconnectTimer = null;
+                initTimeoutEvents();
+            }, 3000);
+        }
+
+        async function handleTimeoutMessage(event) {
             try {
                 const data = JSON.parse(event.data);
 
@@ -257,12 +272,32 @@
             } catch (e) {
                 console.error('❌ Error parsing SSE data:', e);
             }
-        };
+        }
 
-        timeoutEventSource.onerror = (error) => {
-            console.error('❌ SSE connection error:', error);
-            // EventSource will automatically reconnect
-        };
+        function initTimeoutEvents() {
+            cleanupTimeoutEvents();
+            try {
+                timeoutEventSource = new EventSource('/timeout-events');
+            } catch (e) {
+                console.warn('⚠️ Unable to start timeout SSE, retrying...', e);
+                scheduleTimeoutReconnect();
+                return;
+            }
+
+            timeoutEventSource.onopen = () => {
+                console.log('✅ SSE connection established for timeout alerts');
+            };
+
+            timeoutEventSource.onmessage = handleTimeoutMessage;
+
+            timeoutEventSource.onerror = (error) => {
+                console.warn('⚠️ Timeout SSE connection dropped, attempting to reconnect...', error);
+                cleanupTimeoutEvents();
+                scheduleTimeoutReconnect();
+            };
+        }
+
+        initTimeoutEvents();
 
         // Nether portal sound and animation
         const netherSound = document.getElementById('netherSound');
@@ -299,6 +334,8 @@
         let currentPage = 'main'; // 'main', 'terminal', or 'proxmox'
         let connectionCounts = {}; // Store connection counts per IP
         let latencies = {}; // Store ping latencies per IP
+        let proxmoxConnectionCounts = {};
+        let proxmoxLatencies = {};
 
         // Page navigation functions
         function showMainMenu() {
@@ -504,16 +541,12 @@
                 item.innerHTML = `
                     <div class="server-info">
                         <div class="server-ip">${device.ip}</div>
-                        <div class="server-name" style="color: #6E6E6E;">${device.name} - ${device.location}</div>
+                        <div class="server-name">${device.name} - ${device.location}</div>
                     </div>
                     <div class="server-stats">
                         <div class="player-count" id="conn-count-${ipId}">0/20</div>
-                        <div class="ping-bars" id="ping-${ipId}">
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                            <span class="bar"></span>
+                        <div class="ping-indicator" id="ping-${ipId}">
+                            <img src="img/ping/ping-5.png" alt="Ping status" class="ping-icon">
                         </div>
                     </div>
                     <div class="help-icon-inline" title="Connection tips">?</div>
@@ -562,14 +595,21 @@
                     });
                 };
                 item.innerHTML = `
-                    <div class="status-indicator" id="page-proxmox-status-${ipId}"></div>
                     <div class="server-info">
                         <div class="server-ip">${ip}</div>
                         <div class="server-name">${host.name} - ${host.location}</div>
                     </div>
+                    <div class="server-stats">
+                        <div class="player-count" id="proxmox-conn-count-${ipId}">0/∞</div>
+                        <div class="ping-indicator" id="proxmox-ping-${ipId}">
+                            <img src="img/ping/ping-5.png" alt="Ping status" class="ping-icon">
+                        </div>
+                    </div>
                 `;
                 grid.appendChild(item);
                 updateProxmoxStatusInPage(ip);
+                updateProxmoxStatsInPage(ip);
+                fetchProxmoxConnectionCount(ip).catch(() => { });
             });
             updatePageServerCount();
         }
@@ -619,51 +659,46 @@
             const countEl = document.getElementById(`conn-count-${ipId}`);
             if (countEl) {
                 const count = connectionCounts[ip] || 0;
-                countEl.textContent = `${count}/20`;
+                countEl.textContent = `${count}/16`;
             }
+        }
+
+        function getPingSpriteIndex(latency) {
+            if (latency === null || latency === undefined) return 1;
+            if (latency >= 200) return 5;
+            if (latency >= 150) return 4;
+            if (latency >= 100) return 3;
+            if (latency >= 50) return 2;
+            return 1;
         }
 
         function updateDeviceStatusInPage(ip) {
             const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="terminal"]`);
-            const pingBars = document.getElementById(`ping-${ip.replace(/\./g, '_')}`);
+            const pingIndicator = document.getElementById(`ping-${ip.replace(/\./g, '_')}`);
             const device = devices.find(d => d.ip === ip);
             if (!device) return;
 
             if (device.online) {
                 item && item.classList.remove('offline');
-                if (pingBars) {
-                    pingBars.classList.remove('offline');
+                if (pingIndicator) {
+                    pingIndicator.classList.remove('offline');
+                    const pingImg = pingIndicator.querySelector('.ping-icon');
                     const latency = latencies[ip];
-                    // Determine number of bars based on latency
-                    // < 50ms = 5 bars, < 100ms = 4 bars, < 150ms = 3 bars, < 200ms = 2 bars, >= 200ms = 1 bar
-                    let activeBars = 5;
-                    if (latency === null || latency === undefined) {
-                        activeBars = 5; // Default to full if no latency data
-                    } else if (latency >= 200) {
-                        activeBars = 1;
-                    } else if (latency >= 150) {
-                        activeBars = 2;
-                    } else if (latency >= 100) {
-                        activeBars = 3;
-                    } else if (latency >= 50) {
-                        activeBars = 4;
+                    if (pingImg) {
+                        const spriteIndex = getPingSpriteIndex(latency);
+                        pingImg.src = `img/ping/ping-${spriteIndex}.png`;
+                        pingImg.alt = `Ping state ${spriteIndex}`;
                     }
-                    
-                    const bars = pingBars.querySelectorAll('.bar');
-                    bars.forEach((bar, index) => {
-                        if (index < activeBars) {
-                            bar.classList.add('active');
-                        } else {
-                            bar.classList.remove('active');
-                        }
-                    });
                 }
             } else {
                 item && item.classList.add('offline');
-                if (pingBars) {
-                    pingBars.classList.add('offline');
-                    const bars = pingBars.querySelectorAll('.bar');
-                    bars.forEach(bar => bar.classList.remove('active'));
+                if (pingIndicator) {
+                    pingIndicator.classList.add('offline');
+                    const pingImg = pingIndicator.querySelector('.ping-icon');
+                    if (pingImg) {
+                        pingImg.src = 'img/ping/ping-5.png';
+                        pingImg.alt = 'Ping unavailable';
+                    }
                 }
             }
             updatePageServerCount();
@@ -710,7 +745,11 @@
                     )
                     : [];
 
-                await Promise.all([...deviceChecks, ...connectionChecks, ...proxmoxChecks]);
+                const proxmoxConnectionChecks = Array.isArray(proxmoxHosts)
+                    ? proxmoxHosts.map(h => fetchProxmoxConnectionCount(h.ip).catch(() => { }))
+                    : [];
+
+                await Promise.all([...deviceChecks, ...connectionChecks, ...proxmoxChecks, ...proxmoxConnectionChecks]);
 
                 // Hide loading screen after first health check completes
                 if (!initialHealthCheckDone) {
@@ -750,7 +789,10 @@
                     checkConnectionCount(d.ip).catch(() => { });
                 });
             } else if (currentPage === 'proxmox') {
-                proxmoxHosts.forEach(h => checkProxmoxHealth(h.ip).catch(() => { }));
+                proxmoxHosts.forEach(h => {
+                    checkProxmoxHealth(h.ip).catch(() => { });
+                    fetchProxmoxConnectionCount(h.ip).catch(() => { });
+                });
             }
 
             setTimeout(() => {
@@ -779,34 +821,80 @@
                 if (host) {
                     host.online = data.up;
                 }
+                proxmoxLatencies[ip] = data.latency;
                 if (currentPage === 'proxmox') {
                     updateProxmoxStatusInPage(ip);
+                    updateProxmoxStatsInPage(ip);
                 }
             } catch (e) {
                 const host = proxmoxHosts.find(h => h.ip === ip);
                 if (host) {
                     host.online = false;
                 }
+                proxmoxLatencies[ip] = null;
                 if (currentPage === 'proxmox') {
                     updateProxmoxStatusInPage(ip);
+                    updateProxmoxStatsInPage(ip);
                 }
             }
         }
 
         function updateProxmoxStatusInPage(ip) {
             const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="proxmox"]`);
-            const badge = document.getElementById(`page-proxmox-status-${ip.replace(/\./g, '_')}`);
             const host = proxmoxHosts.find(h => h.ip === ip);
             if (!host) return;
 
             if (host.online) {
                 item && item.classList.remove('offline');
-                if (badge) { badge.classList.add('online'); badge.classList.remove('offline'); }
             } else {
                 item && item.classList.add('offline');
-                if (badge) { badge.classList.add('offline'); badge.classList.remove('online'); }
             }
+            updateProxmoxStatsInPage(ip);
             updatePageServerCount();
+        }
+
+        async function fetchProxmoxConnectionCount(ip) {
+            if (!ip) return;
+            try {
+                const res = await fetch(`/proxmox-connection-count?ip=${encodeURIComponent(ip)}`);
+                const data = await res.json();
+                proxmoxConnectionCounts[ip] = data.established_connections || 0;
+            } catch (e) {
+                proxmoxConnectionCounts[ip] = 0;
+            }
+            if (currentPage === 'proxmox') {
+                updateProxmoxStatsInPage(ip);
+            }
+        }
+
+        function updateProxmoxStatsInPage(ip) {
+            const ipId = ip.replace(/\./g, '_');
+            const host = proxmoxHosts.find(h => h.ip === ip);
+            const countEl = document.getElementById(`proxmox-conn-count-${ipId}`);
+            if (countEl) {
+                const count = proxmoxConnectionCounts[ip] || 0;
+                countEl.textContent = `${count}/∞`;
+            }
+
+            const pingIndicator = document.getElementById(`proxmox-ping-${ipId}`);
+            if (!pingIndicator) return;
+            const latency = proxmoxLatencies[ip];
+            const pingImg = pingIndicator.querySelector('.ping-icon');
+
+            if (host && host.online && latency !== null && latency !== undefined) {
+                pingIndicator.classList.remove('offline');
+                const spriteIndex = getPingSpriteIndex(latency);
+                if (pingImg) {
+                    pingImg.src = `img/ping/ping-${spriteIndex}.png`;
+                    pingImg.alt = `Ping state ${spriteIndex}`;
+                }
+            } else {
+                pingIndicator.classList.add('offline');
+                if (pingImg) {
+                    pingImg.src = 'img/ping/ping-5.png';
+                    pingImg.alt = 'Ping unavailable';
+                }
+            }
         }
 
         // Dismiss tips on outside click or Escape

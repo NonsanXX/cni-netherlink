@@ -617,26 +617,6 @@ body {
   background: rgba(220, 38, 38, 0.3);
 }
 
-/* Status Indicator */
-.status-indicator {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 2;
-}
-
-.status-indicator.online {
-  background: #80FF7B;
-  box-shadow: 0 0 8px #80FF7B;
-}
-
-.status-indicator.offline {
-  background: #DC2626;
-  box-shadow: 0 0 8px #DC2626;
-}
-
 /* Server Info */
 .server-info {
   flex: 1;
@@ -651,20 +631,12 @@ body {
   margin-bottom: 4px;
 }
 
-.server-name {
-  font-size: 0.9rem;
-  color: #DDD;
-  text-shadow: 2px 2px rgba(0, 0, 0, 0.6);
-}
-
 /* Server Stats (Player Count + Ping Bars) */
 .server-stats {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-left: auto;
-  position: relative;
-  z-index: 2;
 }
 
 .player-count {
@@ -675,41 +647,24 @@ body {
   text-shadow: 2px 2px rgba(0, 0, 0, 0.6);
 }
 
-.ping-bars {
+.ping-indicator {
+  width: 36px;
+  height: 18px;
   display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  height: 16px;
-  image-rendering: pixelated;
+  align-items: center;
+  justify-content: flex-start;
 }
 
-.ping-bars .bar {
-  width: 2px;
-  background-color: #3F3F3F;
+.ping-indicator .ping-icon {
   display: block;
-  transition: background-color 0.2s ease;
+  width: 100%;
+  height: auto;
   image-rendering: pixelated;
-  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.8);
 }
 
-.ping-bars .bar:nth-child(1) { height: 3px; }
-.ping-bars .bar:nth-child(2) { height: 6px; }
-.ping-bars .bar:nth-child(3) { height: 9px; }
-.ping-bars .bar:nth-child(4) { height: 12px; }
-.ping-bars .bar:nth-child(5) { height: 15px; }
-
-.ping-bars .bar.active {
-  background-color: #52C752;
-  box-shadow: 1px 0 0 #2B8B2B;
-}
-
-.ping-bars.offline .bar {
-  background-color: #3F3F3F;
-}
-
-.ping-bars.offline .bar.active {
-  background-color: #DC4C4C;
-  box-shadow: 1px 0 0 #8B2B2B;
+.ping-indicator.offline .ping-icon {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 
 .server-item:hover:not(:has(.help-icon-inline:hover)) .player-count {

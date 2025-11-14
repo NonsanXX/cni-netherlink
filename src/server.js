@@ -255,6 +255,45 @@ const mimeTypes = {
 
 const publicDir = path.join(__dirname, 'public');
 
+function fetchProxmoxConnectionCount(ip) {
+    return new Promise((resolve) => {
+        const targetHost = (typeof ip === 'string' && ip.trim().length > 0) ? ip.trim() : '10.30.6.119';
+        const options = {
+            hostname: targetHost,
+            port: 8080,
+            path: '/api/connection_count',
+            method: 'GET',
+            timeout: 2000
+        };
+
+        const req = http.request(options, (resp) => {
+            let data = '';
+            resp.on('data', chunk => data += chunk);
+            resp.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    resolve(parsed);
+                } catch (e) {
+                    console.error(`Failed to parse proxmox connection count for ${targetHost}:`, e.message);
+                    resolve({ established_connections: 0, port: 8006 });
+                }
+            });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ established_connections: 0, port: 8006 });
+        });
+
+        req.on('error', (err) => {
+            console.error(`Error fetching proxmox connection count for ${targetHost}:`, err.message);
+            resolve({ established_connections: 0, port: 8006 });
+        });
+
+        req.end();
+    });
+}
+
 function serveStatic(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     let filePath = url.pathname;
@@ -324,9 +363,33 @@ const server = http.createServer((req, res) => {
     // Proxmox health: TCP check to 8006 (HTTPS UI)
     if (req.method === 'GET' && url.pathname === '/proxmox-health') {
         const ip = url.searchParams.get('ip') || '';
-        checkPort(ip, 8006).then((up) => {
+        Promise.all([
+            checkPort(ip, 8006),
+            pingHost(ip)
+        ]).then(([up, pingResult]) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ip, up }));
+            res.end(JSON.stringify({ ip, up, latency: pingResult.latency, pingUp: pingResult.up }));
+        }).catch(() => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, up: false, latency: null, pingUp: false }));
+        });
+        return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/proxmox-connection-count') {
+        const ip = url.searchParams.get('ip');
+        if (!ip) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing ip parameter' }));
+            return;
+        }
+
+        fetchProxmoxConnectionCount(ip).then((data) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, ...data }));
+        }).catch(() => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ip, established_connections: 0, port: 8006 }));
         });
         return;
     }
