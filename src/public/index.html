@@ -119,7 +119,7 @@
     <div class="quit-screen" id="quitScreen" style="display: none;">
         <div class="quit-content">
             <div class="quit-title">Failed to quit the game</div>
-            <div class="quit-subtitle">You will have to continue this path with suffer:</div>
+            <div class="quit-subtitle">You will have to continue this path with suffering:</div>
             <button class="mc-button" onclick="backFromQuit()">Back to Main Menu</button>
         </div>
     </div>
@@ -293,6 +293,7 @@
         let activeTips = null; // currently open tips overlay element
         let initialHealthCheckDone = false;
         let currentPage = 'main'; // 'main', 'terminal', or 'proxmox'
+        let connectionCounts = {}; // Store connection counts per IP
 
         // Page navigation functions
         function showMainMenu() {
@@ -500,6 +501,7 @@
                     <div class="server-info">
                         <div class="server-ip">${device.ip}</div>
                         <div class="server-name">${device.name} - ${device.location}</div>
+                        <div class="server-name" id="conn-count-${ipId}" style="color: #94a3b8; font-size: 0.9em;">0/20 players</div>
                     </div>
                     <div class="help-icon-inline" title="Connection tips">?</div>
                 `;
@@ -581,6 +583,31 @@
             }
         }
 
+        async function checkConnectionCount(ip) {
+            try {
+                const res = await fetch(`/connection-count?ip=${encodeURIComponent(ip)}`);
+                const data = await res.json();
+                connectionCounts[ip] = data.count || 0;
+                if (currentPage === 'terminal') {
+                    updateConnectionCountDisplay(ip);
+                }
+            } catch (e) {
+                connectionCounts[ip] = 0;
+                if (currentPage === 'terminal') {
+                    updateConnectionCountDisplay(ip);
+                }
+            }
+        }
+
+        function updateConnectionCountDisplay(ip) {
+            const ipId = ip.replace(/\./g, '_');
+            const countEl = document.getElementById(`conn-count-${ipId}`);
+            if (countEl) {
+                const count = connectionCounts[ip] || 0;
+                countEl.textContent = `${count}/20 players`;
+            }
+        }
+
         function updateDeviceStatusInPage(ip) {
             const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="terminal"]`);
             const badge = document.getElementById(`page-status-${ip.replace(/\./g, '_')}`);
@@ -619,6 +646,11 @@
                     })
                 );
                 
+                // Also check connection counts for terminal servers
+                const connectionChecks = devices.map(d => 
+                    checkConnectionCount(d.ip).catch(() => {})
+                );
+                
                 const proxmoxChecks = Array.isArray(proxmoxHosts) 
                     ? proxmoxHosts.map(h => 
                         checkProxmoxHealth(h.ip).catch(() => {}).finally(() => {
@@ -633,7 +665,7 @@
                     )
                     : [];
                 
-                await Promise.all([...deviceChecks, ...proxmoxChecks]);
+                await Promise.all([...deviceChecks, ...connectionChecks, ...proxmoxChecks]);
                 
                 // Hide loading screen after first health check completes
                 if (!initialHealthCheckDone) {
@@ -668,7 +700,10 @@
             
             // Re-check all health statuses
             if (currentPage === 'terminal') {
-                devices.forEach(d => checkHealth(d.ip).catch(() => {}));
+                devices.forEach(d => {
+                    checkHealth(d.ip).catch(() => {});
+                    checkConnectionCount(d.ip).catch(() => {});
+                });
             } else if (currentPage === 'proxmox') {
                 proxmoxHosts.forEach(h => checkProxmoxHealth(h.ip).catch(() => {}));
             }
