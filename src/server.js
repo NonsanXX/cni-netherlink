@@ -92,7 +92,7 @@ function pingHost(ip) {
                 if (done) return;
                 done = true;
                 clearTimeout(timer);
-                
+
                 if (code !== 0) {
                     return resolve({ up: false, latency: null });
                 }
@@ -160,13 +160,13 @@ function getConnectionCount(ip, community = 'netlink', timeout = 5000) {
 
         let session;
         let settled = false;
-        
+
         // Timeout handler
         const timeoutHandle = setTimeout(() => {
             if (!settled) {
                 settled = true;
                 if (session) {
-                    try { session.close(); } catch (e) {}
+                    try { session.close(); } catch (e) { }
                 }
                 console.error(`SNMP timeout for ${ip} after ${timeout}ms`);
                 resolve(0);
@@ -174,21 +174,21 @@ function getConnectionCount(ip, community = 'netlink', timeout = 5000) {
         }, timeout);
 
         try {
-            session = new snmp.Session({ 
-                host: ip, 
-                community: community, 
+            session = new snmp.Session({
+                host: ip,
+                community: community,
                 timeouts: [timeout - 500],  // Set SNMP timeout slightly less than our timeout
                 port: 161
             });
-            
+
             // Query TCP connection table (OID: 1.3.6.1.2.1.6.13)
             session.getSubtree({ oid: [1, 3, 6, 1, 2, 1, 6, 13] }, (error, varbinds) => {
                 if (settled) return;
                 settled = true;
                 clearTimeout(timeoutHandle);
-                
-                try { session.close(); } catch (e) {}
-                
+
+                try { session.close(); } catch (e) { }
+
                 if (error) {
                     console.error(`SNMP error for ${ip}:`, error.message);
                     return resolve(0);
@@ -200,15 +200,15 @@ function getConnectionCount(ip, community = 'netlink', timeout = 5000) {
 
                 // Filter for established connections on ports 22 (SSH) and 23 (Telnet)
                 let count = 0;
-                
+
                 varbinds.forEach((vb) => {
                     const oid = vb.oid.join('.');
                     const value = vb.value;
-                    
+
                     // OID format: 1.3.6.1.2.1.6.13.1.1.[local_ip].[local_port].[remote_ip].[remote_port]
                     // We need to check if local_port is 22 or 23, and value (state) is 5 (established)
                     const parts = oid.split('.');
-                    
+
                     // Find the local port position (after the 4 octets of local IP)
                     // Format: 1.3.6.1.2.1.6.13.1.1 = indices 0-9
                     // Local IP = indices 10-13 (4 octets)
@@ -216,7 +216,7 @@ function getConnectionCount(ip, community = 'netlink', timeout = 5000) {
                     if (parts.length >= 15) {
                         const localPort = parseInt(parts[14], 10);
                         const state = value;
-                        
+
                         // Check if port 22 (SSH) or 23 (Telnet) and state is established (5)
                         if ((localPort === 22 || localPort === 23) && state === 5) {
                             count++;
@@ -410,7 +410,7 @@ const server = http.createServer((req, res) => {
         // Set timeout to 0 (infinite) for SSE
         req.setTimeout(0);
         res.setTimeout(0);
-        
+
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',

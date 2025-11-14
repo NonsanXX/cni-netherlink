@@ -758,7 +758,7 @@
                 }
             };
             await runAll();
-            healthTimer = setInterval(runAll, 5000);
+            healthTimer = setInterval(runAll, 10000); // every 10 seconds
         }
 
         // No global toggle/copy handlers; tips are per-card popovers now
