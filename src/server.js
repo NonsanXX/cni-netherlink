@@ -56,12 +56,12 @@ setInterval(() => {
 
 function pingHost(ip) {
     return new Promise((resolve) => {
-        if (!ip) return resolve(false);
+        if (!ip) return resolve({ up: false, latency: null });
         const platform = os.platform();
         let args;
 
         if (platform.startsWith('win')) {
-            // Windows: -n 1 = 1 echo, -w 500 = 500ms timeout (ลดจาก 800ms)
+            // Windows: -n 1 = 1 echo, -w 500 = 500ms timeout
             args = ['-n', '1', '-w', '500', ip];
         } else if (platform === 'darwin') {
             // macOS: -c 1 and we'll enforce timeout via timer
@@ -74,30 +74,52 @@ function pingHost(ip) {
         try {
             const child = spawn('ping', args);
             let done = false;
+            let output = '';
 
             const timer = setTimeout(() => {
                 if (!done) {
                     done = true;
                     try { child.kill('SIGKILL'); } catch { }
-                    resolve(false);
+                    resolve({ up: false, latency: null });
                 }
-            }, 800); // ลดจาก 1500ms เป็น 800ms
+            }, 800);
+
+            child.stdout.on('data', (data) => {
+                output += data.toString();
+            });
 
             child.on('close', (code) => {
                 if (done) return;
                 done = true;
                 clearTimeout(timer);
-                resolve(code === 0);
+                
+                if (code !== 0) {
+                    return resolve({ up: false, latency: null });
+                }
+
+                // Parse latency from ping output
+                let latency = null;
+                if (platform.startsWith('win')) {
+                    // Windows format: "time=1ms" or "time<1ms"
+                    const match = output.match(/time[=<](\d+)ms/i);
+                    if (match) latency = parseInt(match[1], 10);
+                } else {
+                    // Unix format: "time=1.23 ms"
+                    const match = output.match(/time=(\d+\.?\d*)\s*ms/i);
+                    if (match) latency = Math.round(parseFloat(match[1]));
+                }
+
+                resolve({ up: true, latency });
             });
 
             child.on('error', () => {
                 if (done) return;
                 done = true;
                 clearTimeout(timer);
-                resolve(false);
+                resolve({ up: false, latency: null });
             });
         } catch {
-            resolve(false);
+            resolve({ up: false, latency: null });
         }
     });
 }
@@ -292,9 +314,9 @@ const server = http.createServer((req, res) => {
     // Health endpoint must be checked BEFORE static serving
     if (req.method === 'GET' && url.pathname === '/health') {
         const ip = url.searchParams.get('ip') || '';
-        pingHost(ip).then((up) => {
+        pingHost(ip).then((result) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ip, up }));
+            res.end(JSON.stringify({ ip, up: result.up, latency: result.latency }));
         });
         return;
     }
