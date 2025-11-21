@@ -235,10 +235,44 @@ function fetchProxmoxConnectionCount(ip) {
 
 // --- SSE Logic ---
 let lastTimeoutMinute = -1;
-// We don't need to store clients manually with Hono streamSSE, 
-// but we need a way to broadcast. 
-// Hono's streamSSE is per-request. To broadcast, we can use an EventEmitter or a simple Set of controllers.
 const sseControllers = new Set();
+
+// State
+let devices = [];
+let proxmoxHosts = [];
+let deviceStates = {}; // { ip: { online: bool, latency: int, connCount: int } }
+let proxmoxStates = {}; // { ip: { online: bool, latency: int, connCount: int } }
+
+// Load configs
+async function loadConfigs() {
+    try {
+        const devicesPath = path.join(__dirname, '..', 'config', 'devices.json');
+        const proxmoxPath = path.join(__dirname, '..', 'config', 'proxmox.json');
+        
+        if (fs.existsSync(devicesPath)) {
+            devices = JSON.parse(await fs.promises.readFile(devicesPath, 'utf8'));
+        }
+        if (fs.existsSync(proxmoxPath)) {
+            proxmoxHosts = JSON.parse(await fs.promises.readFile(proxmoxPath, 'utf8'));
+        }
+        console.log(`[Config] Loaded ${devices.length} devices and ${proxmoxHosts.length} Proxmox hosts`);
+    } catch (e) {
+        console.error('[Config] Error loading configs:', e);
+    }
+}
+
+loadConfigs();
+
+function broadcast(type, data) {
+    const message = `data: ${JSON.stringify({ type, data })}\n\n`;
+    sseControllers.forEach(controller => {
+        try {
+            controller.write(message);
+        } catch (e) {
+            sseControllers.delete(controller);
+        }
+    });
+}
 
 function shouldPlayTimeout() {
     const now = new Date();
@@ -258,15 +292,72 @@ function shouldPlayTimeout() {
     return false;
 }
 
+// Centralized Polling
+async function pollDevices() {
+    // Poll Terminal Servers
+    for (const device of devices) {
+        const ip = device.ip;
+        
+        // Check Health (Ping)
+        const pingRes = await pingHost(ip);
+        
+        // Check Connection Count (SNMP)
+        // Only check if ping is up to avoid long timeouts on dead hosts
+        let connCount = 0;
+        if (pingRes.up) {
+            connCount = await getConnectionCount(ip);
+        }
+
+        const newState = {
+            ip,
+            online: pingRes.up,
+            latency: pingRes.latency,
+            connCount
+        };
+
+        // Only broadcast if state changed (optional optimization, but for now let's broadcast updates)
+        // Or just update local state and broadcast a full update periodically?
+        // Let's broadcast individual updates to keep it responsive
+        deviceStates[ip] = newState;
+        broadcast('device_update', newState);
+    }
+
+    // Poll Proxmox Hosts
+    for (const host of proxmoxHosts) {
+        const ip = host.ip;
+        
+        // Check Health (Port 8006 + Ping)
+        const [up, pingRes] = await Promise.all([
+            checkPort(ip, 8006),
+            pingHost(ip)
+        ]);
+
+        // Check Connection Count (API)
+        let connCount = 0;
+        if (up) {
+            const proxData = await fetchProxmoxConnectionCount(ip);
+            connCount = proxData.established_connections || 0;
+        }
+
+        const newState = {
+            ip,
+            online: up,
+            latency: pingRes.latency,
+            connCount
+        };
+
+        proxmoxStates[ip] = newState;
+        broadcast('proxmox_update', newState);
+    }
+}
+
+// Start Polling Loop (every 5 seconds)
+setInterval(pollDevices, 5000);
+
+// Timeout Check Loop (every 1 second)
 setInterval(() => {
     if (shouldPlayTimeout()) {
-        sseControllers.forEach(controller => {
-            try {
-                controller.write('data: {"shouldPlay":true}\n\n');
-            } catch (e) {
-                sseControllers.delete(controller);
-            }
-        });
+        broadcast('timeout', { shouldPlay: true });
     }
 }, 1000);
 
@@ -312,12 +403,20 @@ app.get('/connection-count', async (c) => {
     return c.json({ ip, count });
 });
 
-app.get('/timeout-events', (c) => {
+// SSE Endpoint
+app.get('/events', (c) => {
     return streamSSE(c, async (stream) => {
         sseControllers.add(stream);
         console.log(`[SSE] Client connected. Total clients: ${sseControllers.size}`);
         
-        await stream.write('data: {"connected":true}\n\n');
+        await stream.write('data: {"type":"connected", "data":true}\n\n');
+
+        // Send current state immediately
+        const fullState = {
+            devices: Object.values(deviceStates),
+            proxmox: Object.values(proxmoxStates)
+        };
+        await stream.write(`data: ${JSON.stringify({ type: 'full_state', data: fullState })}\n\n`);
 
         const heartbeat = setInterval(async () => {
             try {

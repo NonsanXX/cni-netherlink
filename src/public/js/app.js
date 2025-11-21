@@ -139,10 +139,9 @@ document.addEventListener('alpine:init', () => {
                 this.devices = rawDevices.map(d => ({ ...d, online: false, latency: null, connCount: 0 }));
                 this.proxmoxHosts = rawProxmox.map(h => ({ ...h, online: false, latency: null, connCount: 0 }));
                 
-                await this.checkAllHealth(true); // Initial check with progress update
-                
-                // Start polling
-                this.healthTimer = setInterval(() => this.checkAllHealth(false), 10000);
+                // No more initial checkAllHealth here. SSE 'full_state' will handle it.
+                // But we might want to show something initially.
+                // The initSSE() is called after loadData().
                 
             } catch (e) {
                 console.error('Error loading data', e);
@@ -150,66 +149,13 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async checkAllHealth(isInitial = false) {
-            const total = this.devices.length + this.proxmoxHosts.length;
-            let completed = 0;
-            
-            const updateProgress = () => {
-                if (isInitial) {
-                    completed++;
-                    this.loadingProgress = (completed / total) * 100;
-                    if (completed === total) {
-                        this.loadingMessage = 'All checks completed!';
-                        setTimeout(() => {
-                            this.loading = false;
-                        }, 500);
-                    }
-                }
-            };
-
-            // Check Devices
-            this.devices.forEach(device => {
-                // Health & Ping
-                fetch(`/health?ip=${device.ip}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        device.online = data.up;
-                        device.latency = data.latency;
-                    })
-                    .catch(() => { device.online = false; device.latency = null; })
-                    .finally(updateProgress);
-
-                // Connection Count
-                fetch(`/connection-count?ip=${device.ip}`)
-                    .then(r => r.json())
-                    .then(data => { device.connCount = data.count || 0; })
-                    .catch(() => { device.connCount = 0; });
-            });
-
-            // Check Proxmox
-            this.proxmoxHosts.forEach(host => {
-                // Health & Ping
-                fetch(`/proxmox-health?ip=${host.ip}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        host.online = data.up;
-                        host.latency = data.latency;
-                    })
-                    .catch(() => { host.online = false; host.latency = null; })
-                    .finally(updateProgress);
-
-                // Connection Count
-                fetch(`/proxmox-connection-count?ip=${host.ip}`)
-                    .then(r => r.json())
-                    .then(data => { host.connCount = data.established_connections || 0; })
-                    .catch(() => { host.connCount = 0; });
-            });
-        },
-
+        // Removed checkAllHealth and its polling logic.
+        // Refresh now just re-initializes SSE or requests a full update if we had an endpoint for it.
+        // For now, let's make refresh just reload the page or reconnect SSE.
         refresh() {
             this.playClick();
-            this.showStatusMsg('Refreshing server status...', 'info');
-            this.checkAllHealth(false);
+            this.showStatusMsg('Refreshing connection...', 'info');
+            this.initSSE();
             setTimeout(() => this.showStatusMsg('Refresh complete!', 'success'), 1000);
         },
 
@@ -333,7 +279,7 @@ document.addEventListener('alpine:init', () => {
             if (this.sseSource) this.sseSource.close();
             
             try {
-                this.sseSource = new EventSource('/timeout-events');
+                this.sseSource = new EventSource('/events');
                 
                 this.sseSource.onopen = () => {
                     console.log('✅ SSE Connected');
@@ -341,17 +287,42 @@ document.addEventListener('alpine:init', () => {
                 
                 this.sseSource.onmessage = (event) => {
                     try {
-                        const data = JSON.parse(event.data);
-                        if (data.shouldPlay && !this.timeoutPlayed) {
-                            console.log('🔔 Timeout Alert!');
-                            if(this.timeoutSound) {
-                                this.timeoutSound.currentTime = 0;
-                                this.timeoutSound.play().catch(e => console.error(e));
+                        const msg = JSON.parse(event.data);
+                        
+                        // Handle different message types
+                        if (msg.type === 'full_state') {
+                            // Initial load or full refresh
+                            this.updateDevices(msg.data.devices);
+                            this.updateProxmox(msg.data.proxmox);
+                            this.loading = false;
+                            this.loadingMessage = 'System Online';
+                        } else if (msg.type === 'device_update') {
+                            // Single device update
+                            const device = this.devices.find(d => d.ip === msg.data.ip);
+                            if (device) {
+                                Object.assign(device, msg.data);
                             }
-                            this.timeoutPlayed = true;
-                            setTimeout(() => { this.timeoutPlayed = false; }, 120000);
+                        } else if (msg.type === 'proxmox_update') {
+                            // Single proxmox host update
+                            const host = this.proxmoxHosts.find(h => h.ip === msg.data.ip);
+                            if (host) {
+                                Object.assign(host, msg.data);
+                            }
+                        } else if (msg.type === 'timeout') {
+                            // Timeout Alert
+                            if (msg.data.shouldPlay && !this.timeoutPlayed) {
+                                console.log('🔔 Timeout Alert!');
+                                if(this.timeoutSound) {
+                                    this.timeoutSound.currentTime = 0;
+                                    this.timeoutSound.play().catch(e => console.error(e));
+                                }
+                                this.timeoutPlayed = true;
+                                setTimeout(() => { this.timeoutPlayed = false; }, 120000);
+                            }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.error('Error parsing SSE message:', e);
+                    }
                 };
                 
                 this.sseSource.onerror = () => {
@@ -361,6 +332,27 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 setTimeout(() => this.initSSE(), 3000);
             }
+        },
+
+        updateDevices(newDevices) {
+            // Merge or replace. Since we want to keep the array reference for Alpine, we update in place or push.
+            // But 'devices' is initialized from config.json. The SSE sends full state objects.
+            // We should match by IP.
+            newDevices.forEach(newState => {
+                const device = this.devices.find(d => d.ip === newState.ip);
+                if (device) {
+                    Object.assign(device, newState);
+                }
+            });
+        },
+
+        updateProxmox(newHosts) {
+            newHosts.forEach(newState => {
+                const host = this.proxmoxHosts.find(h => h.ip === newState.ip);
+                if (host) {
+                    Object.assign(host, newState);
+                }
+            });
         }
     }));
 });
