@@ -682,6 +682,10 @@ body {
   opacity: 0.6;
 }
 
+.server-item {
+  color: #ddd;
+}
+
 .server-item:hover:not(:has(.help-icon-inline:hover)) .player-count {
   color: #ffffa0;
 }
