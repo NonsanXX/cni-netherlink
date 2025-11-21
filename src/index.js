@@ -294,65 +294,69 @@ function shouldPlayTimeout() {
 
 // Centralized Polling
 async function pollDevices() {
-    // Poll Terminal Servers
-    for (const device of devices) {
-        const ip = device.ip;
-        
-        // Check Health (Ping)
-        const pingRes = await pingHost(ip);
-        
-        // Check Connection Count (SNMP)
-        // Only check if ping is up to avoid long timeouts on dead hosts
-        let connCount = 0;
-        if (pingRes.up) {
-            connCount = await getConnectionCount(ip);
+    try {
+        // Poll Terminal Servers
+        for (const device of devices) {
+            const ip = device.ip;
+            
+            // Check Health (Ping)
+            const pingRes = await pingHost(ip);
+            
+            // Check Connection Count (SNMP)
+            // Only check if ping is up to avoid long timeouts on dead hosts
+            let connCount = 0;
+            if (pingRes.up) {
+                connCount = await getConnectionCount(ip);
+            }
+
+            const newState = {
+                ip,
+                online: pingRes.up,
+                latency: pingRes.latency,
+                connCount
+            };
+
+            deviceStates[ip] = newState;
+            broadcast('device_update', newState);
         }
 
-        const newState = {
-            ip,
-            online: pingRes.up,
-            latency: pingRes.latency,
-            connCount
-        };
+        // Poll Proxmox Hosts
+        for (const host of proxmoxHosts) {
+            const ip = host.ip;
+            
+            // Check Health (Port 8006 + Ping)
+            const [up, pingRes] = await Promise.all([
+                checkPort(ip, 8006),
+                pingHost(ip)
+            ]);
 
-        // Only broadcast if state changed (optional optimization, but for now let's broadcast updates)
-        // Or just update local state and broadcast a full update periodically?
-        // Let's broadcast individual updates to keep it responsive
-        deviceStates[ip] = newState;
-        broadcast('device_update', newState);
-    }
+            // Check Connection Count (API)
+            let connCount = 0;
+            if (up) {
+                const proxData = await fetchProxmoxConnectionCount(ip);
+                connCount = proxData.established_connections || 0;
+            }
 
-    // Poll Proxmox Hosts
-    for (const host of proxmoxHosts) {
-        const ip = host.ip;
-        
-        // Check Health (Port 8006 + Ping)
-        const [up, pingRes] = await Promise.all([
-            checkPort(ip, 8006),
-            pingHost(ip)
-        ]);
+            const newState = {
+                ip,
+                online: up,
+                latency: pingRes.latency,
+                connCount
+            };
 
-        // Check Connection Count (API)
-        let connCount = 0;
-        if (up) {
-            const proxData = await fetchProxmoxConnectionCount(ip);
-            connCount = proxData.established_connections || 0;
+            proxmoxStates[ip] = newState;
+            broadcast('proxmox_update', newState);
         }
-
-        const newState = {
-            ip,
-            online: up,
-            latency: pingRes.latency,
-            connCount
-        };
-
-        proxmoxStates[ip] = newState;
-        broadcast('proxmox_update', newState);
+    } catch (error) {
+        console.error('[Polling] Error in polling loop:', error);
+    } finally {
+        // Schedule next run
+        setTimeout(pollDevices, 5000);
     }
 }
 
-// Start Polling Loop (every 5 seconds)
-setInterval(pollDevices, 5000);
+// Start Polling Loop
+pollDevices();
 
 // Timeout Check Loop (every 1 second)
 setInterval(() => {
