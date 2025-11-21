@@ -1,978 +1,348 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Netherlink</title>
-    <link rel="icon" type="image/x-icon" href="img/icon.ico">
-    <link rel="stylesheet" href="css/styles.css">
-</head>
+    <link rel="icon" type="image/x-icon" href="img/icon.ico" />
+    <link rel="stylesheet" href="css/styles.css" />
 
-<body>
+    <!-- Alpine.js & App Logic -->
+    <script src="js/vendor/alpine.js" defer></script>
+    <script src="js/app.js"></script>
+  </head>
+
+  <body x-data="netherlinkApp">
     <!-- Background Video -->
     <video id="bgVideo" autoplay muted loop playsinline class="bg-video">
-        <source src="videos/panorama-bg.mp4" type="video/mp4">
+      <source src="videos/panorama-bg.mp4" type="video/mp4" />
     </video>
 
     <!-- Background Music -->
     <audio id="bgMusic" loop>
-        <source src="music/mainmenu_music.mp3" type="audio/mpeg">
+      <source src="music/mainmenu_music.mp3" type="audio/mpeg" />
     </audio>
 
     <!-- Nether Portal Sound -->
     <audio id="netherSound">
-        <source src="sfx/nether.mp3" type="audio/mpeg">
+      <source src="sfx/nether.mp3" type="audio/mpeg" />
     </audio>
 
     <!-- Portal Animation Overlay -->
-    <div id="portalOverlay" class="portal-overlay">
-        <img src="img/portal_anim.png" alt="Portal" class="portal-animation">
+    <div
+      id="portalOverlay"
+      class="portal-overlay"
+      :class="{ 'active': portalActive }"
+    >
+      <img src="img/portal_anim.png" alt="Portal" class="portal-animation" />
     </div>
 
     <!-- Minecraft Loading Screen -->
-    <div id="loadingScreen" class="loading-screen">
-        <div class="loading-content">
-            <img src="img/logo.png" alt="Netherlink" class="loading-logo"><br>
-            <div class="loading-text">Building Terrain</div>
-            <div class="loading-status">Checking devices...</div>
-            <div class="loading-bar">
-                <div class="loading-progress"></div>
-            </div>
+    <div
+      id="loadingScreen"
+      class="loading-screen"
+      x-show="loading"
+      x-transition:leave.opacity.duration.500ms
+    >
+      <div class="loading-content">
+        <img src="img/logo.png" alt="Netherlink" class="loading-logo" /><br />
+        <div class="loading-text">Building Terrain</div>
+        <div class="loading-status" x-text="loadingMessage">
+          Checking devices...
         </div>
+        <div class="loading-bar">
+          <div
+            class="loading-progress"
+            :style="`width: ${loadingProgress}%`"
+          ></div>
+        </div>
+      </div>
     </div>
 
     <!-- Main Menu Page -->
-    <div class="container" id="mainMenu">
-        <div class="logo-container">
-            <img src="img/logo.png" alt="CNI Netherlink" class="logo">
-            <div class="splash-text">CNI 2025/2!</div>
-        </div>
+    <div
+      class="container"
+      id="mainMenu"
+      x-show="page === 'main' && !showOptions && !showQuit"
+    >
+      <div class="logo-container">
+        <img src="img/logo.png" alt="CNI Netherlink" class="logo" />
+        <div class="splash-text" x-text="splashText">CNI 2025/2!</div>
+      </div>
 
-        <div class="mc-menu">
-            <button class="mc-button" onclick="showServerPage('terminal')">
-                Terminal Servers
-            </button>
-            <button class="mc-button" onclick="showServerPage('proxmox')">
-                Proxmox Hosts
-            </button>
-            <div class="double">
-                <button class="mc-button" onclick="showOptionsScreen()">
-                    Options
-                </button>
-                <button class="mc-button" onclick="showQuitScreen()">
-                    Quit Game
-                </button>
-            </div>
+      <div class="mc-menu">
+        <button class="mc-button" @click="navigate('terminal')">
+          Terminal Servers
+        </button>
+        <button class="mc-button" @click="navigate('proxmox')">
+          Proxmox Hosts
+        </button>
+        <div class="double">
+          <button class="mc-button" @click="openOptions()">Options</button>
+          <button class="mc-button" @click="openQuit()">Quit Game</button>
         </div>
+      </div>
     </div>
 
     <!-- Server Selection Page -->
-    <div class="server-select-container" id="serverSelectPage" style="display: none;">
-        <div class="title-bar">
-            <div class="title-text" id="pageTitle">Select Server</div>
-            <div class="subtitle-text">CNI Network Lab 306</div>
+    <div
+      class="server-select-container"
+      id="serverSelectPage"
+      x-show="page !== 'main' && !showOptions && !showQuit"
+      style="display: none"
+    >
+      <div class="title-bar">
+        <div
+          class="title-text"
+          x-text="page === 'terminal' ? 'Terminal Servers' : 'Proxmox Hosts'"
+        >
+          Select Server
         </div>
+        <div class="subtitle-text">CNI Network Lab 306</div>
+      </div>
 
-        <div class="server-lists">
-            <div class="server-section">
-                <div class="section-header">
-                    <span class="section-title" id="sectionTitle">Servers</span>
-                    <span class="section-count" id="sectionCount">0/0 Online</span>
+      <div class="server-lists">
+        <div class="server-section">
+          <div class="section-header">
+            <span
+              class="section-title"
+              x-text="page === 'terminal' ? 'Servers' : 'Proxmox Hosts'"
+              >Servers</span
+            >
+            <span
+              class="section-count"
+              x-text="`${page === 'terminal' ? devices.filter(d => d.online).length : proxmoxHosts.filter(h => h.online).length}/${page === 'terminal' ? devices.length : proxmoxHosts.length} Online`"
+              >0/0 Online</span
+            >
+          </div>
+
+          <div class="server-list" id="serverList">
+            <!-- Terminal Servers List -->
+            <template x-if="page === 'terminal'">
+              <template x-for="device in devices" :key="device.ip">
+                <div
+                  class="server-item"
+                  :class="{ 'offline': !device.online }"
+                  @click="openSSH(device.ip)"
+                  @mousedown="playClick()"
+                >
+                  <div class="server-info">
+                    <div class="server-ip" x-text="device.ip"></div>
+                    <div
+                      class="server-name"
+                      x-text="`${device.name} - ${device.location}`"
+                    ></div>
+                  </div>
+                  <div class="server-stats">
+                    <div class="player-count" x-text="`${device.connCount}/16`">
+                      0/16
+                    </div>
+                    <div
+                      class="ping-indicator"
+                      :class="{ 'offline': !device.online }"
+                    >
+                      <img
+                        :src="getPingImage(device.latency)"
+                        alt="Ping status"
+                        class="ping-icon"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    class="help-icon-inline"
+                    title="Connection tips"
+                    @click.stop="openTips(device.ip)"
+                    @mousedown.stop
+                  >
+                    ?
+                  </div>
                 </div>
-                <div class="server-list" id="serverList"></div>
-                <div class="scan-text">
-                    Scan for games on your local network<br>
-                    <span class="scan-dots" id="scanDots">O o O</span>
+              </template>
+            </template>
+
+            <!-- Proxmox Hosts List -->
+            <template x-if="page === 'proxmox'">
+              <template x-for="host in proxmoxHosts" :key="host.ip">
+                <div
+                  class="server-item"
+                  :class="{ 'offline': !host.online }"
+                  @click="openProxmox(host.ip)"
+                  @mousedown="playClick()"
+                >
+                  <div class="server-info">
+                    <div class="server-ip" x-text="host.ip"></div>
+                    <div
+                      class="server-name"
+                      x-text="`${host.name} - ${host.location}`"
+                    ></div>
+                  </div>
+                  <div class="server-stats">
+                    <div class="player-count" x-text="`${host.connCount}/∞`">
+                      0/∞
+                    </div>
+                    <div
+                      class="ping-indicator"
+                      :class="{ 'offline': !host.online }"
+                    >
+                      <img
+                        :src="getPingImage(host.latency)"
+                        alt="Ping status"
+                        class="ping-icon"
+                      />
+                    </div>
+                  </div>
                 </div>
+              </template>
+            </template>
+
+            <div
+              x-show="(page === 'terminal' && devices.length === 0) || (page === 'proxmox' && proxmoxHosts.length === 0)"
+              style="color: #ddd; text-align: center; padding: 20px"
+            >
+              No servers found.
             </div>
+          </div>
 
+          <div class="scan-text">
+            Scan for games on your local network<br />
+            <span class="scan-dots" x-text="scanDots">O o O</span>
+          </div>
         </div>
+      </div>
 
-        <div class="bottom-buttons">
-            <button class="mc-button" onclick="showMainMenu()">Back</button>
-            <button class="mc-button" id="refreshBtn">Refresh</button>
-        </div>
+      <div class="bottom-buttons">
+        <button class="mc-button" @click="navigate('main')">Back</button>
+        <button class="mc-button" @click="refresh()">Refresh</button>
+      </div>
     </div>
 
     <!-- Options Screen -->
-    <div class="options-screen" id="optionsScreen" style="display: none;">
-        <div class="options-content">
-            <div class="options-title">Options</div>
+    <div
+      class="options-screen"
+      id="optionsScreen"
+      x-show="showOptions"
+      style="display: none"
+    >
+      <div class="options-content">
+        <div class="options-title">Options</div>
 
-            <div class="options-list">
-                <!-- Sound Volume Control -->
-                <div class="option-item">
-                    <div class="slider-container">
-                        <span class="slider-label" id="soundLabel">Sound: 100%</span>
-                        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100">
-                    </div>
-                </div>
-                <div class="option-item">
-                    <div class="slider-container">
-                        <span class="slider-label" id="musicLabel">Music: 100%</span>
-                        <input type="range" class="volume-slider" id="musicSlider" min="0" max="100" value="100">
-                    </div>
-                </div>
+        <div class="options-list">
+          <!-- Sound Volume Control -->
+          <div class="option-item">
+            <div class="slider-container">
+              <span class="slider-label" x-text="`Sound: ${soundVolume}%`"
+                >Sound: 100%</span
+              >
+              <input
+                type="range"
+                class="volume-slider"
+                min="0"
+                max="100"
+                x-model="soundVolume"
+              />
             </div>
-
-            <button class="mc-button done-button" onclick="closeOptions()">Done</button>
+          </div>
+          <div class="option-item">
+            <div class="slider-container">
+              <span class="slider-label" x-text="`Music: ${musicVolume}%`"
+                >Music: 100%</span
+              >
+              <input
+                type="range"
+                class="volume-slider"
+                min="0"
+                max="100"
+                x-model="musicVolume"
+              />
+            </div>
+          </div>
         </div>
+
+        <button class="mc-button done-button" @click="closeOptions()">
+          Done
+        </button>
+      </div>
     </div>
 
     <!-- Quit Error Screen -->
-    <div class="quit-screen" id="quitScreen" style="display: none;">
-        <div class="quit-content">
-            <div class="quit-title">Failed to quit the game</div>
-            <div class="quit-subtitle">You will have to continue this path with suffering:</div>
-            <button class="mc-button" onclick="backFromQuit()">Back to Main Menu</button>
+    <div
+      class="quit-screen"
+      id="quitScreen"
+      x-show="showQuit"
+      style="display: none"
+    >
+      <div class="quit-content">
+        <div class="quit-title">Failed to quit the game</div>
+        <div class="quit-subtitle">
+          You will have to continue this path with suffering:
         </div>
+        <button class="mc-button" @click="closeQuit()">
+          Back to Main Menu
+        </button>
+      </div>
     </div>
 
     <!-- Footer -->
-    <footer class="footer" id="mainFooter">
-        Made with <img src="img/heart.png" alt="love" class="heart-icon"> by
-        <a href="https://github.com/NonsanXX" target="_blank" rel="noopener" class="footer-link">@Phuriphat</a>
+    <footer
+      class="footer"
+      id="mainFooter"
+      x-show="page === 'main' && !showOptions && !showQuit"
+    >
+      Made with <img src="img/heart.png" alt="love" class="heart-icon" /> by
+      <a
+        href="https://github.com/NonsanXX"
+        target="_blank"
+        rel="noopener"
+        class="footer-link"
+        >@Phuriphat</a
+      >
     </footer>
 
-    <!-- Global tips overlay (above everything) -->
-    <div id="tipsOverlay" class="tips-overlay" aria-hidden="true">
-        <div class="tips-backdrop"></div>
-        <div class="tips-modal" role="dialog" aria-modal="true" aria-label="Connection tips">
-            <!-- <button id="tipsClose" class="tips-close" aria-label="Close">×</button> -->
-            <div class="tips-title">Connection tips</div>
-            <div class="tips-note">If your SSH client (or PuTTY) can't negotiate legacy algorithms or you don't have a
-                modern SSH client, use the command below. Otherwise, just click a device to open it.</div>
-            <div class="tips-section">
-                <div class="tips-label">OpenSSH command:</div>
-                <code id="overlaySshCmd" class="tips-code"></code>
-                <button id="overlayCopySsh" class="tips-copy">Copy</button>
-            </div>
-            <div class="tips-section">
-                <div class="tips-label">Telnet command:</div>
-                <code id="overlayTelnetCmd" class="tips-code"></code>
-                <button id="overlayCopyTelnet" class="tips-copy">Copy</button>
-            </div>
+    <!-- Global tips overlay -->
+    <div
+      id="tipsOverlay"
+      class="tips-overlay"
+      :class="{ 'visible': tipsOpen }"
+      :aria-hidden="!tipsOpen"
+    >
+      <div class="tips-backdrop" @click="closeTips()"></div>
+      <div
+        class="tips-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connection tips"
+      >
+        <div class="tips-title">Connection tips</div>
+        <div class="tips-note">
+          If your SSH client (or PuTTY) can't negotiate legacy algorithms or you
+          don't have a modern SSH client, use the command below. Otherwise, just
+          click a device to open it.
         </div>
+        <div class="tips-section">
+          <div class="tips-label">OpenSSH command:</div>
+          <code class="tips-code" x-text="sshCmd"></code>
+          <button class="tips-copy" @click="copyToClipboard(sshCmd, 'SSH')">
+            Copy
+          </button>
+        </div>
+        <div class="tips-section">
+          <div class="tips-label">Telnet command:</div>
+          <code class="tips-code" x-text="telnetCmd"></code>
+          <button
+            class="tips-copy"
+            @click="copyToClipboard(telnetCmd, 'Telnet')"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
     </div>
-    <div id="statusMessage" class="status-message"></div>
 
-    <script>
-        // Background panorama video fallback to enforce looping in browsers that drop autoplay
-        const bgVideo = document.getElementById('bgVideo');
-        if (bgVideo) {
-            const restartBgVideo = () => {
-                try {
-                    bgVideo.currentTime = 0;
-                    const playPromise = bgVideo.play();
-                    if (playPromise && typeof playPromise.catch === 'function') {
-                        playPromise.catch(() => { });
-                    }
-                } catch (err) {
-                    console.warn('Unable to resume panorama video', err);
-                }
-            };
-
-            bgVideo.addEventListener('ended', restartBgVideo);
-
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden && bgVideo.paused) {
-                    restartBgVideo();
-                }
-            });
-        }
-
-        // Background music
-        const bgMusic = document.getElementById('bgMusic');
-        bgMusic.volume = 1;
-
-        // Volume controls
-        const volumeSlider = document.getElementById('volumeSlider');
-        const soundLabel = document.getElementById('soundLabel');
-        const musicSlider = document.getElementById('musicSlider');
-        const musicLabel = document.getElementById('musicLabel');
-
-        // Sound effects volume control
-        function updateVolume(value) {
-            const volume = value / 100;
-            clickSound.volume = volume;
-            timeoutSound.volume = volume;
-            soundLabel.textContent = `Sound: ${value}%`;
-        }
-
-        if (volumeSlider) {
-            volumeSlider.addEventListener('input', (e) => {
-                updateVolume(e.target.value);
-            });
-        }
-
-        // Music volume control
-        function updateMusicVolume(value) {
-            const volume = value / 100;
-            bgMusic.volume = volume;
-            musicLabel.textContent = `Music: ${value}%`;
-        }
-
-        if (musicSlider) {
-            musicSlider.addEventListener('input', (e) => {
-                updateMusicVolume(e.target.value);
-            });
-        }
-
-        // Play music on first user interaction
-        let musicStarted = false;
-        document.addEventListener('click', () => {
-            if (!musicStarted) {
-                bgMusic.play().catch(() => { });
-                musicStarted = true;
-            }
-        }, { once: true });
-
-        // Minecraft click sound
-        const clickSound = new Audio('sfx/minecraft_click.mp3');
-        clickSound.volume = 1;
-
-        function playClickSound() {
-            try {
-                clickSound.currentTime = 0;
-                clickSound.play().catch(() => { });
-            } catch (e) { }
-        }
-
-        // Timeout sound at 20:00 (8:00 PM Thai time)
-        const timeoutSound = new Audio('sfx/timeout.mp3');
-        timeoutSound.volume = 1;
-        let timeoutSoundPlayed = false;
-
-        // Use Server-Sent Events for real-time timeout notifications
-        let timeoutEventSource = null;
-        let timeoutEventReconnectTimer = null;
-
-        function cleanupTimeoutEvents() {
-            if (timeoutEventSource) {
-                try {
-                    timeoutEventSource.close();
-                } catch { }
-                timeoutEventSource = null;
-            }
-        }
-
-        function scheduleTimeoutReconnect() {
-            if (timeoutEventReconnectTimer) return;
-            timeoutEventReconnectTimer = setTimeout(() => {
-                timeoutEventReconnectTimer = null;
-                initTimeoutEvents();
-            }, 3000);
-        }
-
-        async function handleTimeoutMessage(event) {
-            try {
-                const data = JSON.parse(event.data);
-
-                if (data.connected) {
-                    console.log('🔗 Connected to timeout notification service');
-                    return;
-                }
-
-                if (data.shouldPlay && !timeoutSoundPlayed) {
-                    console.log('🔔 Timeout alert received from server!');
-                    try {
-                        timeoutSound.currentTime = 0;
-                        await timeoutSound.play();
-                        timeoutSoundPlayed = true;
-                        console.log(`Freddy is coming at ${new Date().toLocaleTimeString()} (SSE)`);
-
-                        // Reset flag after 2 minutes
-                        setTimeout(() => {
-                            timeoutSoundPlayed = false;
-                            console.log('🔄 Timeout flag reset');
-                        }, 120000);
-                    } catch (e) {
-                        console.error('❌ Error playing timeout sound:', e);
-                    }
-                } else if (data.shouldPlay && timeoutSoundPlayed) {
-                    console.log('⏭️ Timeout sound already played, skipping');
-                }
-            } catch (e) {
-                console.error('❌ Error parsing SSE data:', e);
-            }
-        }
-
-        function initTimeoutEvents() {
-            cleanupTimeoutEvents();
-            try {
-                timeoutEventSource = new EventSource('/timeout-events');
-            } catch (e) {
-                console.warn('⚠️ Unable to start timeout SSE, retrying...', e);
-                scheduleTimeoutReconnect();
-                return;
-            }
-
-            timeoutEventSource.onopen = () => {
-                console.log('✅ SSE connection established for timeout alerts');
-            };
-
-            timeoutEventSource.onmessage = handleTimeoutMessage;
-
-            timeoutEventSource.onerror = (error) => {
-                console.warn('⚠️ Timeout SSE connection dropped, attempting to reconnect...', error);
-                cleanupTimeoutEvents();
-                scheduleTimeoutReconnect();
-            };
-        }
-
-        initTimeoutEvents();
-
-        // Nether portal sound and animation
-        const netherSound = document.getElementById('netherSound');
-        const portalOverlay = document.getElementById('portalOverlay');
-        netherSound.volume = 1;
-
-        function showPortalAnimation(callback) {
-            // Play nether sound
-            try {
-                netherSound.currentTime = 0;
-                netherSound.play().catch(() => { });
-            } catch (e) { }
-
-            // Show portal overlay
-            portalOverlay.classList.add('active');
-
-            // Execute callback and hide after animation
-            setTimeout(() => {
-                if (callback) callback();
-                setTimeout(() => {
-                    portalOverlay.classList.remove('active');
-                }, 500);
-            }, 1000);
-        }
-
-        const statusEl = document.getElementById('statusMessage');
-        let statusTimer;
-        let devices = [];
-        let proxmoxHosts = [];
-        let healthTimer = null;
-        let lastIpForHelp = null;
-        let activeTips = null; // currently open tips overlay element
-        let initialHealthCheckDone = false;
-        let currentPage = 'main'; // 'main', 'terminal', or 'proxmox'
-        let connectionCounts = {}; // Store connection counts per IP
-        let latencies = {}; // Store ping latencies per IP
-        let proxmoxConnectionCounts = {};
-        let proxmoxLatencies = {};
-
-        // Page navigation functions
-        function showMainMenu() {
-            playClickSound();
-            currentPage = 'main';
-            document.getElementById('mainMenu').style.display = 'flex';
-            document.getElementById('serverSelectPage').style.display = 'none';
-            document.getElementById('optionsScreen').style.display = 'none';
-            document.getElementById('quitScreen').style.display = 'none';
-            document.getElementById('mainFooter').style.display = 'block';
-        }
-
-        function showOptionsScreen() {
-            playClickSound();
-            document.getElementById('mainMenu').style.display = 'none';
-            document.getElementById('serverSelectPage').style.display = 'none';
-            document.getElementById('optionsScreen').style.display = 'flex';
-            document.getElementById('quitScreen').style.display = 'none';
-            document.getElementById('mainFooter').style.display = 'none';
-        }
-
-        function closeOptions() {
-            playClickSound();
-            showMainMenu();
-        }
-
-        function showQuitScreen() {
-            playClickSound();
-            document.getElementById('mainMenu').style.display = 'none';
-            document.getElementById('serverSelectPage').style.display = 'none';
-            document.getElementById('optionsScreen').style.display = 'none';
-            document.getElementById('quitScreen').style.display = 'flex';
-            document.getElementById('mainFooter').style.display = 'none';
-        }
-
-        function backFromQuit() {
-            playClickSound();
-            showMainMenu();
-        }
-
-        function showServerPage(type) {
-            playClickSound();
-            currentPage = type;
-            document.getElementById('mainMenu').style.display = 'none';
-            document.getElementById('serverSelectPage').style.display = 'flex';
-            document.getElementById('mainFooter').style.display = 'none';
-
-            const serverList = document.getElementById('serverList');
-            const pageTitle = document.getElementById('pageTitle');
-            const sectionTitle = document.getElementById('sectionTitle');
-
-            if (type === 'terminal') {
-                pageTitle.textContent = 'Terminal Servers';
-                sectionTitle.textContent = 'Terminal Servers';
-                serverList.innerHTML = '';
-                renderDevicesInPage(devices);
-            } else if (type === 'proxmox') {
-                pageTitle.textContent = 'Proxmox Hosts';
-                sectionTitle.textContent = 'Proxmox Hosts';
-                serverList.innerHTML = '';
-                renderProxmoxInPage(proxmoxHosts);
-            }
-        }
-
-        // Load and set random splash text (for main page only)
-        async function setRandomSplash() {
-            try {
-                const response = await fetch('/config/splashtext.json');
-                const splashTexts = await response.json();
-                const splashEl = document.querySelector('.container .splash-text');
-                if (splashEl && splashTexts.length > 0) {
-                    const randomText = splashTexts[Math.floor(Math.random() * splashTexts.length)];
-                    splashEl.textContent = randomText;
-                }
-            } catch (error) {
-                console.error('Error loading splash text:', error);
-                // Fallback text
-                const splashEl = document.querySelector('.container .splash-text');
-                if (splashEl) {
-                    splashEl.textContent = 'CNI 2025/2!';
-                }
-            }
-        }
-
-        // Set splash text after page loads
-        window.addEventListener('DOMContentLoaded', setRandomSplash);
-
-        function updateLoadingProgress(percent) {
-            const progressBar = document.querySelector('.loading-progress');
-            if (progressBar) {
-                progressBar.style.width = percent + '%';
-            }
-        }
-
-        function updateLoadingStatus(message) {
-            const statusEl = document.querySelector('.loading-status');
-            if (statusEl) {
-                statusEl.textContent = message;
-            }
-        }
-
-        function hideLoadingScreen() {
-            const loadingScreen = document.getElementById('loadingScreen');
-            if (loadingScreen) {
-                loadingScreen.style.opacity = '0';
-                setTimeout(() => {
-                    loadingScreen.style.display = 'none';
-                }, 500);
-            }
-        }
-
-        function showStatus(message, type = 'info') {
-            if (!statusEl) return;
-            clearTimeout(statusTimer);
-            statusEl.textContent = message;
-            statusEl.className = `status-message visible ${type}`;
-            statusTimer = setTimeout(() => {
-                statusEl.classList.remove('visible');
-            }, 3000);
-        }
-
-        async function loadDevices() {
-            try {
-                // Load both devices and proxmox in parallel
-                const [devicesResponse, proxmoxResponse] = await Promise.all([
-                    fetch('/config/devices.json'),
-                    fetch('/config/proxmox.json')
-                ]);
-
-                devices = await devicesResponse.json();
-                proxmoxHosts = await proxmoxResponse.json();
-
-                renderDevices(devices);
-                renderProxmox(proxmoxHosts);
-
-                await startHealthMonitor(); // Wait for initial health check
-                // Nothing else needed here; tips are shown per-card on demand
-            } catch (error) {
-                console.error('Error loading devices:', error);
-                document.getElementById('deviceGrid').innerHTML =
-                    '<p style="color:#475569; text-align:center;">Error loading devices. Please check devices.json.</p>';
-                hideLoadingScreen();
-            }
-        }
-
-        function openSSH(ip) {
-            lastIpForHelp = ip;
-            // Close any open tips when navigating/opening
-            closeTips();
-
-            // Show portal animation then open SSH
-            showPortalAnimation(() => {
-                try {
-                    window.location.href = `ssh://cisco@${ip}`;
-                } catch (e) {
-                    showStatus('SSH handler not available on this device', 'error');
-                }
-            });
-        }
-
-        function openTips(ip) {
-            const overlay = document.getElementById('tipsOverlay');
-            if (!overlay) return;
-            lastIpForHelp = ip;
-            document.getElementById('overlaySshCmd').textContent = `ssh cisco@${ip} -o KexAlgorithms=+diffie-hellman-group1-sha1 -o HostKeyAlgorithms=+ssh-rsa -c aes128-cbc`;
-            document.getElementById('overlayTelnetCmd').textContent = `telnet ${ip}`;
-            overlay.classList.add('visible');
-            overlay.setAttribute('aria-hidden', 'false');
-            // Focus on close button for accessibility
-            const closeBtn = document.getElementById('tipsClose');
-            if (closeBtn) setTimeout(() => closeBtn.focus(), 100);
-            activeTips = overlay;
-        }
-
-        function closeTips() {
-            const overlay = document.getElementById('tipsOverlay');
-            if (overlay) {
-                overlay.classList.remove('visible');
-                overlay.setAttribute('aria-hidden', 'true');
-            }
-            activeTips = null;
-        }
-
-        function renderDevices(list) {
-            // Main menu now only has buttons, no cards to render
-        }
-
-        function renderDevicesInPage(list) {
-            const grid = document.getElementById('serverList');
-            grid.innerHTML = '';
-            if (!list || list.length === 0) {
-                grid.innerHTML = '<p style="color:#DDD; text-align:center; padding: 20px;">No devices found.</p>';
-                return;
-            }
-            list.forEach(device => {
-                const ipId = device.ip.replace(/\./g, '_');
-                const item = document.createElement('div');
-                item.className = 'server-item';
-                item.setAttribute('data-ip', device.ip);
-                item.setAttribute('data-type', 'terminal');
-                item.onclick = () => openSSH(device.ip);
-                item.onmousedown = () => playClickSound();
-                item.innerHTML = `
-                    <div class="server-info">
-                        <div class="server-ip">${device.ip}</div>
-                        <div class="server-name">${device.name} - ${device.location}</div>
-                    </div>
-                    <div class="server-stats">
-                        <div class="player-count" id="conn-count-${ipId}">0/20</div>
-                        <div class="ping-indicator" id="ping-${ipId}">
-                            <img src="img/ping/ping-5.png" alt="Ping status" class="ping-icon">
-                        </div>
-                    </div>
-                    <div class="help-icon-inline" title="Connection tips">?</div>
-                `;
-                grid.appendChild(item);
-                const helpBtn = item.querySelector('.help-icon-inline');
-                if (helpBtn) {
-                    helpBtn.addEventListener('mousedown', (e) => {
-                        e.stopPropagation();
-                    });
-                    helpBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        playClickSound();
-                        openTips(device.ip);
-                    });
-                }
-                updateDeviceStatusInPage(device.ip);
-            });
-            updatePageServerCount();
-        }
-
-        function renderProxmox(list) {
-            // Main menu now only has buttons, no cards to render
-        }
-
-        function renderProxmoxInPage(list) {
-            const grid = document.getElementById('serverList');
-            grid.innerHTML = '';
-            if (!list || list.length === 0) {
-                grid.innerHTML = '<p style="color:#DDD; text-align:center; padding: 20px;">No Proxmox hosts found.</p>';
-                return;
-            }
-            list.forEach(host => {
-                const ip = host.ip;
-                const ipId = ip.replace(/\./g, '_');
-                const item = document.createElement('div');
-                item.className = 'server-item';
-                item.setAttribute('data-ip', ip);
-                item.setAttribute('data-type', 'proxmox');
-                item.onclick = (e) => {
-                    e.preventDefault();
-                    playClickSound();
-                    showPortalAnimation(() => {
-                        window.open(`https://${ip}:8006/`, '_blank', 'noopener');
-                    });
-                };
-                item.innerHTML = `
-                    <div class="server-info">
-                        <div class="server-ip">${ip}</div>
-                        <div class="server-name">${host.name} - ${host.location}</div>
-                    </div>
-                    <div class="server-stats">
-                        <div class="player-count" id="proxmox-conn-count-${ipId}">0/∞</div>
-                        <div class="ping-indicator" id="proxmox-ping-${ipId}">
-                            <img src="img/ping/ping-5.png" alt="Ping status" class="ping-icon">
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(item);
-                updateProxmoxStatusInPage(ip);
-                updateProxmoxStatsInPage(ip);
-                fetchProxmoxConnectionCount(ip).catch(() => { });
-            });
-            updatePageServerCount();
-        }
-
-        async function checkHealth(ip) {
-            try {
-                const res = await fetch(`/health?ip=${encodeURIComponent(ip)}`);
-                const data = await res.json();
-                const device = devices.find(d => d.ip === ip);
-                if (device) {
-                    device.online = data.up;
-                }
-                latencies[ip] = data.latency;
-                if (currentPage === 'terminal') {
-                    updateDeviceStatusInPage(ip);
-                }
-            } catch (e) {
-                const device = devices.find(d => d.ip === ip);
-                if (device) {
-                    device.online = false;
-                }
-                latencies[ip] = null;
-                if (currentPage === 'terminal') {
-                    updateDeviceStatusInPage(ip);
-                }
-            }
-        }
-
-        async function checkConnectionCount(ip) {
-            try {
-                const res = await fetch(`/connection-count?ip=${encodeURIComponent(ip)}`);
-                const data = await res.json();
-                connectionCounts[ip] = data.count || 0;
-                if (currentPage === 'terminal') {
-                    updateConnectionCountDisplay(ip);
-                }
-            } catch (e) {
-                connectionCounts[ip] = 0;
-                if (currentPage === 'terminal') {
-                    updateConnectionCountDisplay(ip);
-                }
-            }
-        }
-
-        function updateConnectionCountDisplay(ip) {
-            const ipId = ip.replace(/\./g, '_');
-            const countEl = document.getElementById(`conn-count-${ipId}`);
-            if (countEl) {
-                const count = connectionCounts[ip] || 0;
-                countEl.textContent = `${count}/16`;
-            }
-        }
-
-        function getPingSpriteIndex(latency) {
-            if (latency === null || latency === undefined) return 1;
-            if (latency >= 200) return 5;
-            if (latency >= 150) return 4;
-            if (latency >= 100) return 3;
-            if (latency >= 50) return 2;
-            return 1;
-        }
-
-        function updateDeviceStatusInPage(ip) {
-            const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="terminal"]`);
-            const pingIndicator = document.getElementById(`ping-${ip.replace(/\./g, '_')}`);
-            const device = devices.find(d => d.ip === ip);
-            if (!device) return;
-
-            if (device.online) {
-                item && item.classList.remove('offline');
-                if (pingIndicator) {
-                    pingIndicator.classList.remove('offline');
-                    const pingImg = pingIndicator.querySelector('.ping-icon');
-                    const latency = latencies[ip];
-                    if (pingImg) {
-                        const spriteIndex = getPingSpriteIndex(latency);
-                        pingImg.src = `img/ping/ping-${spriteIndex}.png`;
-                        pingImg.alt = `Ping state ${spriteIndex}`;
-                    }
-                }
-            } else {
-                item && item.classList.add('offline');
-                if (pingIndicator) {
-                    pingIndicator.classList.add('offline');
-                    const pingImg = pingIndicator.querySelector('.ping-icon');
-                    if (pingImg) {
-                        pingImg.src = 'img/ping/ping-5.png';
-                        pingImg.alt = 'Ping unavailable';
-                    }
-                }
-            }
-            updatePageServerCount();
-        }
-
-        async function startHealthMonitor() {
-            if (healthTimer) clearInterval(healthTimer);
-            const runAll = async () => {
-                const totalChecks = devices.length + (Array.isArray(proxmoxHosts) ? proxmoxHosts.length : 0);
-                let completedChecks = 0;
-
-                if (!initialHealthCheckDone) {
-                    updateLoadingStatus(`Checking ${devices.length} terminal servers...`);
-                }
-
-                const deviceChecks = devices.map(d =>
-                    checkHealth(d.ip).catch(() => { }).finally(() => {
-                        completedChecks++;
-                        if (!initialHealthCheckDone) {
-                            updateLoadingProgress((completedChecks / totalChecks) * 100);
-                            if (completedChecks === devices.length) {
-                                updateLoadingStatus(`Checking ${proxmoxHosts.length} Proxmox hosts...`);
-                            }
-                        }
-                    })
-                );
-
-                const proxmoxChecks = Array.isArray(proxmoxHosts)
-                    ? proxmoxHosts.map(h =>
-                        checkProxmoxHealth(h.ip).catch(() => { }).finally(() => {
-                            completedChecks++;
-                            if (!initialHealthCheckDone) {
-                                updateLoadingProgress((completedChecks / totalChecks) * 100);
-                                if (completedChecks === totalChecks) {
-                                    updateLoadingStatus('All checks completed!');
-                                }
-                            }
-                        })
-                    )
-                    : [];
-
-                // Fire connection/usage checks in the background so the loading screen isn't blocked by slow/down devices
-                const connectionChecks = devices.map(d => checkConnectionCount(d.ip).catch(() => { }));
-                const proxmoxConnectionChecks = Array.isArray(proxmoxHosts)
-                    ? proxmoxHosts.map(h => fetchProxmoxConnectionCount(h.ip).catch(() => { }))
-                    : [];
-                [...connectionChecks, ...proxmoxConnectionChecks].forEach(p => p.catch(() => { }));
-
-                await Promise.all([...deviceChecks, ...proxmoxChecks]);
-
-                // Hide loading screen after first health check completes
-                if (!initialHealthCheckDone) {
-                    initialHealthCheckDone = true;
-                    setTimeout(hideLoadingScreen, 300);
-                }
-            };
-            await runAll();
-            healthTimer = setInterval(runAll, 10000); // every 10 seconds
-        }
-
-        // No global toggle/copy handlers; tips are per-card popovers now
-
-        // Update page server count
-        function updatePageServerCount() {
-            const items = document.querySelectorAll('#serverList .server-item');
-            let onlineCount = 0;
-            items.forEach(item => {
-                if (!item.classList.contains('offline')) onlineCount++;
-            });
-
-            const countSpan = document.getElementById('sectionCount');
-            if (countSpan) {
-                countSpan.textContent = `${onlineCount}/${items.length} Online`;
-            }
-        }
-
-        // Refresh button
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            playClickSound();
-            showStatus('Refreshing server status...', 'info');
-
-            // Re-check all health statuses
-            if (currentPage === 'terminal') {
-                devices.forEach(d => {
-                    checkHealth(d.ip).catch(() => { });
-                    checkConnectionCount(d.ip).catch(() => { });
-                });
-            } else if (currentPage === 'proxmox') {
-                proxmoxHosts.forEach(h => {
-                    checkProxmoxHealth(h.ip).catch(() => { });
-                    fetchProxmoxConnectionCount(h.ip).catch(() => { });
-                });
-            }
-
-            setTimeout(() => {
-                showStatus('Refresh complete!', 'success');
-            }, 1000);
-        });
-
-        loadDevices();
-
-        // Animate scanning dots
-        const scanDots = document.getElementById('scanDots');
-        if (scanDots) {
-            let dotState = 0;
-            const dotStates = ['O o O', 'o O o'];
-            setInterval(() => {
-                dotState = (dotState + 1) % dotStates.length;
-                scanDots.textContent = dotStates[dotState];
-            }, 500);
-        }
-
-        async function checkProxmoxHealth(ip) {
-            try {
-                const res = await fetch(`/proxmox-health?ip=${encodeURIComponent(ip)}`);
-                const data = await res.json();
-                const host = proxmoxHosts.find(h => h.ip === ip);
-                if (host) {
-                    host.online = data.up;
-                }
-                proxmoxLatencies[ip] = data.latency;
-                if (currentPage === 'proxmox') {
-                    updateProxmoxStatusInPage(ip);
-                    updateProxmoxStatsInPage(ip);
-                }
-            } catch (e) {
-                const host = proxmoxHosts.find(h => h.ip === ip);
-                if (host) {
-                    host.online = false;
-                }
-                proxmoxLatencies[ip] = null;
-                if (currentPage === 'proxmox') {
-                    updateProxmoxStatusInPage(ip);
-                    updateProxmoxStatsInPage(ip);
-                }
-            }
-        }
-
-        function updateProxmoxStatusInPage(ip) {
-            const item = document.querySelector(`#serverList .server-item[data-ip="${ip}"][data-type="proxmox"]`);
-            const host = proxmoxHosts.find(h => h.ip === ip);
-            if (!host) return;
-
-            if (host.online) {
-                item && item.classList.remove('offline');
-            } else {
-                item && item.classList.add('offline');
-            }
-            updateProxmoxStatsInPage(ip);
-            updatePageServerCount();
-        }
-
-        async function fetchProxmoxConnectionCount(ip) {
-            if (!ip) return;
-            try {
-                const res = await fetch(`/proxmox-connection-count?ip=${encodeURIComponent(ip)}`);
-                const data = await res.json();
-                proxmoxConnectionCounts[ip] = data.established_connections || 0;
-            } catch (e) {
-                proxmoxConnectionCounts[ip] = 0;
-            }
-            if (currentPage === 'proxmox') {
-                updateProxmoxStatsInPage(ip);
-            }
-        }
-
-        function updateProxmoxStatsInPage(ip) {
-            const ipId = ip.replace(/\./g, '_');
-            const host = proxmoxHosts.find(h => h.ip === ip);
-            const countEl = document.getElementById(`proxmox-conn-count-${ipId}`);
-            if (countEl) {
-                const count = proxmoxConnectionCounts[ip] || 0;
-                countEl.textContent = `${count}/∞`;
-            }
-
-            const pingIndicator = document.getElementById(`proxmox-ping-${ipId}`);
-            if (!pingIndicator) return;
-            const latency = proxmoxLatencies[ip];
-            const pingImg = pingIndicator.querySelector('.ping-icon');
-
-            if (host && host.online && latency !== null && latency !== undefined) {
-                pingIndicator.classList.remove('offline');
-                const spriteIndex = getPingSpriteIndex(latency);
-                if (pingImg) {
-                    pingImg.src = `img/ping/ping-${spriteIndex}.png`;
-                    pingImg.alt = `Ping state ${spriteIndex}`;
-                }
-            } else {
-                pingIndicator.classList.add('offline');
-                if (pingImg) {
-                    pingImg.src = 'img/ping/ping-5.png';
-                    pingImg.alt = 'Ping unavailable';
-                }
-            }
-        }
-
-        // Dismiss tips on outside click or Escape
-        const overlay = document.getElementById('tipsOverlay');
-        if (overlay) {
-            overlay.addEventListener('click', (e) => {
-                if (e.target && e.target.classList && e.target.classList.contains('tips-backdrop')) {
-                    closeTips();
-                }
-            });
-        }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' || e.key === 'E' || e.key === 'e') {
-                closeTips();
-            }
-        });
-
-        // Wire overlay copy and close buttons
-        const overlayCopySsh = document.getElementById('overlayCopySsh');
-        const overlayCopyTelnet = document.getElementById('overlayCopyTelnet');
-        const tipsClose = document.getElementById('tipsClose');
-        if (overlayCopySsh) {
-            overlayCopySsh.addEventListener('click', async (e) => {
-                playClickSound();
-                e.stopPropagation();
-                const text = document.getElementById('overlaySshCmd').textContent;
-                try {
-                    await navigator.clipboard.writeText(text);
-                    showStatus('SSH command copied', 'success');
-                } catch {
-                    showStatus('Copy failed. Select and copy manually.', 'error');
-                }
-            });
-        }
-        if (overlayCopyTelnet) {
-            overlayCopyTelnet.addEventListener('click', async (e) => {
-                playClickSound();
-                e.stopPropagation();
-                const text = document.getElementById('overlayTelnetCmd').textContent;
-                try {
-                    await navigator.clipboard.writeText(text);
-                    showStatus('Telnet command copied', 'success');
-                } catch {
-                    showStatus('Copy failed. Select and copy manually.', 'error');
-                }
-            });
-        }
-        if (tipsClose) {
-            tipsClose.addEventListener('click', (e) => {
-                playClickSound();
-                e.stopPropagation();
-                closeTips();
-            });
-        }
-    </script>
-</body>
-
+    <div
+      id="statusMessage"
+      class="status-message"
+      :class="[statusMessage ? 'visible' : '', statusType]"
+      x-text="statusMessage"
+    ></div>
+  </body>
 </html>

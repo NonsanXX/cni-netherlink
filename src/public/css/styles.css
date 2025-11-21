@@ -654,8 +654,8 @@ body {
 }
 
 .ping-indicator {
-  width: 36px;
-  height: 18px;
+  width: 20px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
