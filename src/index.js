@@ -19,6 +19,7 @@ const PORT_CHECK_TIMEOUT = parseInt(process.env.PORT_CHECK_TIMEOUT || '1500', 10
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const HOUR_TIMEOUT = parseInt(process.env.HOUR_TIMEOUT || '20', 10);
 const MINUTE_TIMEOUT = parseInt(process.env.MINUTE_TIMEOUT || '00', 10);
+const SOUNDTRACK_DIR = path.join(__dirname, 'public', 'music', 'soundtrack');
 
 const app = new Hono();
 
@@ -233,6 +234,32 @@ function fetchProxmoxConnectionCount(ip) {
     });
 }
 
+function prettifyTrackName(fileName) {
+    if (!fileName || typeof fileName !== 'string') return 'Unknown Track';
+    const withoutExt = fileName.replace(/\.[^.]+$/, '');
+    const noDiscIndex = withoutExt.replace(/^\d+-\d+\.\s*/, '');
+    const noSimpleIndex = noDiscIndex.replace(/^\d+\.\s*/, '');
+    const cleaned = noSimpleIndex.replace(/_/g, ' ').trim();
+    return cleaned.length ? cleaned : 'Unknown Track';
+}
+
+async function getSoundtrackList() {
+    try {
+        if (!fs.existsSync(SOUNDTRACK_DIR)) return [];
+        const files = await fs.promises.readdir(SOUNDTRACK_DIR);
+        return files
+            .filter((file) => /\.(mp3|wav|ogg)$/i.test(file))
+            .map((file) => ({
+                file,
+                title: prettifyTrackName(file),
+                url: `/music/soundtrack/${encodeURIComponent(file)}`
+            }));
+    } catch (error) {
+        console.error('[Soundtrack] Failed to list soundtrack files:', error.message);
+        return [];
+    }
+}
+
 // --- SSE Logic ---
 let lastTimeoutMinute = -1;
 const sseControllers = new Set();
@@ -405,6 +432,11 @@ app.get('/connection-count', async (c) => {
     const community = c.req.query('community') || 'netlink';
     const count = await getConnectionCount(ip, community);
     return c.json({ ip, count });
+});
+
+app.get('/soundtracks', async (c) => {
+    const tracks = await getSoundtrackList();
+    return c.json({ tracks });
 });
 
 // SSE Endpoint

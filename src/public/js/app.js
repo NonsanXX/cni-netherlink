@@ -7,6 +7,16 @@ document.addEventListener('alpine:init', () => {
         proxmoxHosts: [],
         hiddenTerminalIps: [],
         hiddenProxmoxIps: [],
+        soundtrackTracks: [],
+        trackQueue: [],
+        trackHistory: [],
+        currentTrack: null,
+        currentTrackTitle: '',
+        jukeboxLoading: true,
+        pendingMusicStart: false,
+        isMusicPaused: false,
+        trackDuration: 0,
+        trackPosition: 0,
         
         // Loading State
         loading: true,
@@ -48,6 +58,7 @@ document.addEventListener('alpine:init', () => {
             this.startScanDots();
             await this.loadSplash();
             await this.loadData();
+            await this.loadSoundtracks();
             this.initSSE();
             
             // Watch for volume changes
@@ -82,6 +93,14 @@ document.addEventListener('alpine:init', () => {
             this.timeoutSound = new Audio('sfx/timeout.mp3');
             this.netherSound = document.getElementById('netherSound');
             this.dropSound = new Audio('sfx/drop.mp3');
+
+            if (this.bgMusic) {
+                this.bgMusic.loop = false;
+                this.bgMusic.addEventListener('ended', () => this.playNextTrack());
+                this.bgMusic.addEventListener('timeupdate', () => this.syncTrackPosition());
+                this.bgMusic.addEventListener('loadedmetadata', () => this.syncTrackDuration());
+                this.bgMusic.addEventListener('durationchange', () => this.syncTrackDuration());
+            }
             
             // Set initial volumes
             this.updateSoundVolume(this.soundVolume);
@@ -89,10 +108,7 @@ document.addEventListener('alpine:init', () => {
             
             // Play music on first interaction
             const startMusic = () => {
-                if (!this.musicStarted) {
-                    this.bgMusic.play().catch(() => {});
-                    this.musicStarted = true;
-                }
+                this.playFromJukebox(true);
             };
             document.addEventListener('click', startMusic, { once: true });
         },
@@ -122,6 +138,161 @@ document.addEventListener('alpine:init', () => {
                 this.dropSound.currentTime = 0;
                 this.dropSound.play().catch(() => {});
             }
+        },
+
+        async loadSoundtracks() {
+            this.jukeboxLoading = true;
+            try {
+                const response = await fetch('/soundtracks');
+                if (!response.ok) throw new Error('Failed to fetch soundtrack list');
+                const payload = await response.json();
+                const tracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+                this.soundtrackTracks = tracks.map((track) => ({
+                    ...track,
+                    url: track.url || track.file || ''
+                })).filter(track => track.url);
+            } catch (error) {
+                console.error('Error loading soundtrack list', error);
+                this.soundtrackTracks = [{
+                    title: 'Main Menu Theme',
+                    url: 'music/mainmenu_music.mp3',
+                    file: 'mainmenu_music.mp3'
+                }];
+            } finally {
+                this.jukeboxLoading = false;
+                if (this.pendingMusicStart) {
+                    this.playFromJukebox(true);
+                }
+            }
+        },
+
+        shuffleTracks(list) {
+            const arr = [...list];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        },
+
+        playFromJukebox(force = false) {
+            if (!this.bgMusic) return;
+            if (!this.soundtrackTracks.length) {
+                this.pendingMusicStart = true;
+                return;
+            }
+            this.pendingMusicStart = false;
+            if (!this.trackQueue.length) {
+                this.trackQueue = this.shuffleTracks(this.soundtrackTracks);
+            }
+            if (!this.musicStarted || force) {
+                this.playNextTrack(true);
+            }
+        },
+
+        playNextTrack(force = false) {
+            if (!this.bgMusic) return;
+            if (!this.soundtrackTracks.length) return;
+            if (!this.trackQueue.length) {
+                this.trackQueue = this.shuffleTracks(this.soundtrackTracks);
+            }
+            const nextTrack = this.trackQueue.shift();
+            if (!nextTrack) return;
+            this.startTrack(nextTrack, { addToHistory: true, force });
+        },
+
+        startTrack(track, { addToHistory = true, force = false } = {}) {
+            if (!track || !this.bgMusic) return;
+            if (addToHistory && this.currentTrack) {
+                this.trackHistory.push(this.currentTrack);
+                if (this.trackHistory.length > 20) {
+                    this.trackHistory.shift();
+                }
+            }
+            this.currentTrack = track;
+            this.currentTrackTitle = track.title || track.file;
+            this.trackPosition = 0;
+            this.trackDuration = Number.isFinite(track.duration) ? track.duration : 0;
+            this.bgMusic.src = track.url || track.file;
+            this.bgMusic.load();
+            this.isMusicPaused = false;
+            const playPromise = this.bgMusic.play();
+            if (playPromise) {
+                playPromise.then(() => {
+                    this.musicStarted = true;
+                }).catch((err) => {
+                    if (force) {
+                        console.warn('Unable to start jukebox playback', err);
+                    }
+                });
+            }
+        },
+
+        playPreviousTrack() {
+            this.playClick();
+            if (!this.bgMusic) return;
+            if (!this.trackHistory.length) return;
+            if (this.currentTrack) {
+                this.trackQueue.unshift(this.currentTrack);
+            }
+            const previous = this.trackHistory.pop();
+            this.startTrack(previous, { addToHistory: false, force: true });
+        },
+
+        togglePause() {
+            this.playClick();
+            if (!this.bgMusic) return;
+            if (!this.musicStarted) {
+                this.playFromJukebox(true);
+                return;
+            }
+            if (this.isMusicPaused) {
+                const resumePromise = this.bgMusic.play();
+                if (resumePromise) {
+                    resumePromise.then(() => {
+                        this.isMusicPaused = false;
+                    }).catch(() => {});
+                } else {
+                    this.isMusicPaused = false;
+                }
+            } else {
+                this.bgMusic.pause();
+                this.isMusicPaused = true;
+            }
+        },
+
+        skipTrack() {
+            this.playClick();
+            if (!this.musicStarted) return;
+            this.playNextTrack(true);
+        },
+
+        syncTrackDuration() {
+            if (!this.bgMusic) return;
+            const duration = this.bgMusic.duration;
+            this.trackDuration = Number.isFinite(duration) ? duration : 0;
+        },
+
+        syncTrackPosition() {
+            if (!this.bgMusic) return;
+            const position = this.bgMusic.currentTime;
+            this.trackPosition = Number.isFinite(position) ? position : 0;
+        },
+
+        handleSeekInput(value) {
+            if (!this.bgMusic || !this.musicStarted || !this.trackDuration) return;
+            const newTime = parseFloat(value);
+            if (!Number.isFinite(newTime)) return;
+            const clamped = Math.min(Math.max(newTime, 0), this.trackDuration);
+            this.bgMusic.currentTime = clamped;
+            this.trackPosition = clamped;
+        },
+
+        formatTime(seconds) {
+            if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
         },
 
         // --- Data Loading ---
