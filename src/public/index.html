@@ -119,7 +119,7 @@
           <div class="server-list" id="serverList">
             <!-- Terminal Servers List -->
             <template x-if="page === 'terminal'">
-              <template x-for="device in devices" :key="device.ip">
+              <template x-for="device in visibleDevices()" :key="device.ip">
                 <div
                   class="server-item"
                   :class="{ 'offline': !device.online }"
@@ -162,7 +162,7 @@
 
             <!-- Proxmox Hosts List -->
             <template x-if="page === 'proxmox'">
-              <template x-for="host in proxmoxHosts" :key="host.ip">
+              <template x-for="host in visibleProxmox()" :key="host.ip">
                 <div
                   class="server-item"
                   :class="{ 'offline': !host.online }"

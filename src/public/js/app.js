@@ -5,6 +5,8 @@ document.addEventListener('alpine:init', () => {
         splashText: 'CNI 2025/2!',
         devices: [],
         proxmoxHosts: [],
+        hiddenTerminalIps: [],
+        hiddenProxmoxIps: [],
         
         // Loading State
         loading: true,
@@ -33,6 +35,7 @@ document.addEventListener('alpine:init', () => {
         clickSound: null,
         timeoutSound: null,
         netherSound: null,
+        dropSound: null,
         
         // Timers & SSE
         healthTimer: null,
@@ -51,9 +54,10 @@ document.addEventListener('alpine:init', () => {
             this.$watch('soundVolume', val => this.updateSoundVolume(val));
             this.$watch('musicVolume', val => this.updateMusicVolume(val));
             
-            // Global keyboard listener for Escape
+            // Global keyboard listener for Escape and drop hotkey
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') this.closeTips();
+                if (e.key === 'q' || e.key === 'Q') this.handleDropHotkey(e);
             });
 
             // Background video handling
@@ -77,6 +81,7 @@ document.addEventListener('alpine:init', () => {
             this.clickSound = new Audio('sfx/minecraft_click.mp3');
             this.timeoutSound = new Audio('sfx/timeout.mp3');
             this.netherSound = document.getElementById('netherSound');
+            this.dropSound = new Audio('sfx/drop.mp3');
             
             // Set initial volumes
             this.updateSoundVolume(this.soundVolume);
@@ -97,6 +102,7 @@ document.addEventListener('alpine:init', () => {
             if(this.clickSound) this.clickSound.volume = vol;
             if(this.timeoutSound) this.timeoutSound.volume = vol;
             if(this.netherSound) this.netherSound.volume = vol;
+            if(this.dropSound) this.dropSound.volume = vol;
         },
 
         updateMusicVolume(val) {
@@ -108,6 +114,13 @@ document.addEventListener('alpine:init', () => {
             if(this.clickSound) {
                 this.clickSound.currentTime = 0;
                 this.clickSound.play().catch(() => {});
+            }
+        },
+
+        playDrop() {
+            if(this.dropSound) {
+                this.dropSound.currentTime = 0;
+                this.dropSound.play().catch(() => {});
             }
         },
 
@@ -154,14 +167,42 @@ document.addEventListener('alpine:init', () => {
         // For now, let's make refresh just reload the page or reconnect SSE.
         refresh() {
             this.playClick();
+            this.resetDroppedServers();
             this.showStatusMsg('Refreshing connection...', 'info');
             this.initSSE();
             setTimeout(() => this.showStatusMsg('Refresh complete!', 'success'), 1000);
         },
 
+        handleDropHotkey(event) {
+            if (this.page === 'main' || this.showOptions || this.showQuit || this.tipsOpen) return;
+            if (this.page !== 'terminal' && this.page !== 'proxmox') return;
+            event.preventDefault();
+            this.removeNextServer();
+        },
+
+        removeNextServer() {
+            const list = this.page === 'terminal' ? this.devices : this.proxmoxHosts;
+            const hidden = this.page === 'terminal' ? this.hiddenTerminalIps : this.hiddenProxmoxIps;
+            const nextItem = list.find(item => !hidden.includes(item.ip));
+            if (!nextItem) {
+                this.showStatusMsg('No more servers to drop', 'info');
+                return;
+            }
+            hidden.push(nextItem.ip);
+            this.playDrop();
+        },
+
+        resetDroppedServers() {
+            this.hiddenTerminalIps = [];
+            this.hiddenProxmoxIps = [];
+        },
+
         // --- Navigation & UI ---
         navigate(target) {
             this.playClick();
+            if (target === 'main') {
+                this.resetDroppedServers();
+            }
             this.page = target;
             this.showOptions = false;
             this.showQuit = false;
@@ -252,6 +293,14 @@ document.addEventListener('alpine:init', () => {
             setTimeout(() => {
                 this.statusMessage = '';
             }, 3000);
+        },
+
+        visibleDevices() {
+            return this.devices.filter(device => !this.hiddenTerminalIps.includes(device.ip));
+        },
+
+        visibleProxmox() {
+            return this.proxmoxHosts.filter(host => !this.hiddenProxmoxIps.includes(host.ip));
         },
 
         // --- Helpers ---
