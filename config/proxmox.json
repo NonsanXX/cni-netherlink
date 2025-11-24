@@ -1,32 +1,32 @@
 [
     {
-        "ip": "10.30.6.119",
-        "name": "Rack 1",
+        "ip": "rack1nw.it.kmitl.ac.th",
+        "name": "(10.30.6.119) Rack 1",
         "location": "Lab 306"
     },
     {
-        "ip": "10.30.6.129",
-        "name": "Rack 2",
+        "ip": "rack2nw.it.kmitl.ac.th",
+        "name": "(10.30.6.129) Rack 2",
         "location": "Lab 306"
     },
     {
-        "ip": "10.30.6.139",
-        "name": "Rack 3",
+        "ip": "rack3nw.it.kmitl.ac.th",
+        "name": "(10.30.6.139) Rack 3",
         "location": "Lab 306"
     },
     {
-        "ip": "10.30.6.149",
-        "name": "Rack 4",
+        "ip": "rack4nw.it.kmitl.ac.th",
+        "name": "(10.30.6.149) Rack 4",
         "location": "Lab 306"
     },
     {
-        "ip": "10.30.6.159",
-        "name": "Rack 5",
+        "ip": "rack5nw.it.kmitl.ac.th",
+        "name": "(10.30.6.159) Rack 5",
         "location": "Lab 306"
     },
     {
-        "ip": "10.30.6.169",
-        "name": "Rack 6",
+        "ip": "rack6nw.it.kmitl.ac.th",
+        "name": "(10.30.6.169) Rack 6",
         "location": "Lab 306"
     }
 ]
