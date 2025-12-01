@@ -28,5 +28,10 @@
         "ip": "10.30.6.160",
         "name": "Rack 6",
         "location": "Lab 306"
+    },
+    {
+        "ip": "10.30.6.170",
+        "name": "Rack 7",
+        "location": "Lab 306"
     }
 ]

@@ -91,6 +91,10 @@ document.addEventListener('alpine:init', () => {
             this.bgMusic = document.getElementById('bgMusic');
             this.clickSound = new Audio('sfx/minecraft_click.mp3');
             this.timeoutSound = new Audio('sfx/timeout.mp3');
+            this.timeoutSound.addEventListener('ended', () => {
+                // Restore music volume when timeout sound ends
+                this.updateMusicVolume(this.musicVolume);
+            });
             this.netherSound = document.getElementById('netherSound');
             this.dropSound = new Audio('sfx/drop.mp3');
 
@@ -533,6 +537,10 @@ document.addEventListener('alpine:init', () => {
                             if (msg.data.shouldPlay && !this.timeoutPlayed) {
                                 console.log('🔔 Timeout Alert!');
                                 if(this.timeoutSound) {
+                                    // Mute background music while timeout sound plays
+                                    if (this.bgMusic) {
+                                        this.bgMusic.volume = 0;
+                                    }
                                     this.timeoutSound.currentTime = 0;
                                     this.timeoutSound.play().catch(e => console.error(e));
                                 }

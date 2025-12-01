@@ -297,6 +297,54 @@ body {
   .mc-button.small {
     width: 100%;
   }
+
+  /* Fix main page scrolling on small screens */
+  body {
+    justify-content: flex-start;
+    padding-top: 20px;
+  }
+
+  .container {
+    padding-bottom: 120px; /* Ensure content clears the footer */
+    min-height: auto;
+  }
+
+  .logo {
+    margin-bottom: 10px;
+  }
+
+  .splash-text {
+    font-size: 1rem;
+    top: 80px;
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%) rotate(-10deg);
+    white-space: normal;
+    width: max-content;
+    max-width: 90%;
+    text-align: center;
+    animation: splashFloatMobile 1.5s ease-in-out infinite;
+  }
+
+  @keyframes splashFloatMobile {
+    0%, 100% { transform: translateX(-50%) translateY(0) rotate(-10deg) scale(1); }
+    50% { transform: translateX(-50%) translateY(-5px) rotate(-10deg) scale(1.05); }
+  }
+
+  /* Fix server list on mobile */
+  .server-select-container {
+    width: 95%;
+    margin: 10px auto;
+    max-height: 85vh;
+  }
+
+  .server-lists {
+    padding: 10px;
+  }
+
+  .title-text {
+    font-size: 1.5rem;
+  }
 }
 
 /* Minecraft Style Button */
@@ -574,6 +622,7 @@ body {
 .server-select-container {
   width: 900px;
   max-width: 95vw;
+  max-height: 85vh; /* Limit height to viewport */
   background: rgba(0, 0, 0, 0.75);
   border: 2px solid #000;
   box-shadow: inset -2px -4px rgba(0, 0, 0, 0.5),
@@ -581,6 +630,7 @@ body {
   display: flex;
   flex-direction: column;
   margin: 20px 0;
+  overflow: hidden; /* Ensure nothing spills out */
 }
 
 /* Main Menu */
@@ -620,15 +670,19 @@ body {
 /* Server Lists */
 .server-lists {
   padding: 20px;
-  height: 600px;
+  flex: 1;
+  min-height: 0; /* Allow shrinking */
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .server-section {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0; /* Allow shrinking */
+  overflow: hidden;
 }
 
 .section-header {
