@@ -2,36 +2,51 @@
     {
         "ip": "10.30.6.110",
         "name": "Rack 1",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     },
     {
         "ip": "10.30.6.120",
         "name": "Rack 2",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     },
     {
         "ip": "10.30.6.130",
         "name": "Rack 3",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     },
     {
         "ip": "10.30.6.140",
         "name": "Rack 4",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     },
     {
         "ip": "10.30.6.150",
         "name": "Rack 5",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     },
     {
         "ip": "10.30.6.160",
-        "name": "Rack 6",
-        "location": "Lab 306"
+        "name": "Rack 6 (Switch)",
+        "location": "Lab 306",
+        "maxUsers": 5,
+        "protocol": "telnet"
+    },
+    {
+        "ip": "10.30.6.161",
+        "name": "Rack 6 (Router)",
+        "location": "Lab 306",
+        "maxUsers": 5,
+        "protocol": "telnet"
     },
     {
         "ip": "10.30.6.170",
         "name": "Rack 7",
-        "location": "Lab 306"
+        "location": "Lab 306",
+        "maxUsers": 16
     }
 ]

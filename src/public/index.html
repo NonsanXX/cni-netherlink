@@ -186,14 +186,17 @@
                   @mousedown="playClick()"
                 >
                   <div class="server-info">
-                    <div class="server-ip" x-text="device.ip"></div>
+                    <div class="server-ip">
+                      <span x-text="device.ip"></span>
+                      <span x-show="device.protocol === 'telnet'" class="protocol-badge">TELNET</span>
+                    </div>
                     <div
                       class="server-name"
                       x-text="`${device.name} - ${device.location}`"
                     ></div>
                   </div>
                   <div class="server-stats">
-                    <div class="player-count" x-text="`${device.connCount}/16`">
+                    <div class="player-count" x-text="`${device.connCount}/${device.maxUsers || 16}`">
                       0/16
                     </div>
                     <div

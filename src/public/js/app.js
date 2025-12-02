@@ -406,6 +406,15 @@ document.addEventListener('alpine:init', () => {
         // --- Actions ---
         openSSH(ip) {
             this.playClick();
+            
+            // Check if device is Telnet-only
+            const device = this.devices.find(d => d.ip === ip);
+            if (device && device.protocol === 'telnet') {
+                this.openTips(ip);
+                this.showStatusMsg('This device requires Telnet', 'info');
+                return;
+            }
+
             this.portalActive = true;
             if(this.netherSound) {
                 this.netherSound.currentTime = 0;
