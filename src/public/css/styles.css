@@ -345,6 +345,28 @@ body {
   .title-text {
     font-size: 1.5rem;
   }
+
+  /* Mobile Touch Improvements */
+  .mc-button {
+    height: 56px; /* Larger touch target */
+    font-size: 1.1rem;
+  }
+
+  .server-item {
+    padding: 20px; /* More padding for easier tapping */
+    margin-bottom: 8px;
+  }
+
+  .help-icon-inline {
+    width: 36px; /* Larger help button */
+    height: 36px;
+    font-size: 1.2rem;
+  }
+  
+  .volume-slider::-webkit-slider-thumb {
+    width: 24px; /* Larger slider thumb */
+    height: 60px;
+  }
 }
 
 /* Minecraft Style Button */
@@ -616,6 +638,59 @@ body {
   50% {
     transform: scale(1.2);
   }
+}
+
+/* Snow Effect */
+.snow-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  display: none; /* Hidden by default, shown by JS in Dec */
+  overflow: hidden;
+}
+
+.snow-back {
+  z-index: 0; /* Above video (-1), below content */
+}
+
+.snow-front {
+  z-index: 50; /* Above most content, below logo */
+}
+
+.snow-flake {
+  position: absolute;
+  top: -20px;
+  background-repeat: no-repeat;
+  background-size: contain;
+  image-rendering: pixelated;
+  opacity: 0.9;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes snowFall1 {
+  0% { transform: translateY(-20px) translateX(0); }
+  100% { transform: translateY(105vh) translateX(50px); }
+}
+
+@keyframes snowFall2 {
+  0% { transform: translateY(-20px) translateX(0); }
+  100% { transform: translateY(105vh) translateX(-50px); }
+}
+
+@keyframes snowFall3 {
+  0% { transform: translateY(-20px) translateX(0); }
+  50% { transform: translateY(50vh) translateX(30px); }
+  100% { transform: translateY(105vh) translateX(-10px); }
+}
+
+@keyframes snowFall4 {
+  0% { transform: translateY(-20px) translateX(0); }
+  50% { transform: translateY(50vh) translateX(-30px); }
+  100% { transform: translateY(105vh) translateX(10px); }
 }
 
 /* Server Select Container (Selection Page) */
@@ -901,6 +976,7 @@ body {
 
 .logo-container {
   position: relative;
+  z-index: 51; /* Above front snow */
   display: inline-block;
   margin: 0 auto 30px;
   display: block;

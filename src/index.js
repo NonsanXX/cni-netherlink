@@ -290,6 +290,22 @@ async function loadConfigs() {
 
 loadConfigs();
 
+// Watch for config changes
+const configDir = path.join(__dirname, '..', 'config');
+if (fs.existsSync(configDir)) {
+    let fsWait = false;
+    fs.watch(configDir, (event, filename) => {
+        if (filename && (filename === 'devices.json' || filename === 'proxmox.json')) {
+            if (fsWait) return;
+            fsWait = setTimeout(() => {
+                fsWait = false;
+            }, 100);
+            console.log(`[Config] Detected change in ${filename}, reloading...`);
+            loadConfigs();
+        }
+    });
+}
+
 function broadcast(type, data) {
     const message = `data: ${JSON.stringify({ type, data })}\n\n`;
     sseControllers.forEach(controller => {
@@ -325,20 +341,24 @@ async function pollDevices() {
         // Poll Terminal Servers
         for (const device of devices) {
             const ip = device.ip;
+            const protocol = device.protocol || 'ssh';
+            const targetPort = protocol === 'telnet' ? 23 : 22;
             
-            // Check Health (Ping)
-            const pingRes = await pingHost(ip);
+            // Check Health (Port + Ping)
+            const [portUp, pingRes] = await Promise.all([
+                checkPort(ip, targetPort),
+                pingHost(ip)
+            ]);
             
             // Check Connection Count (SNMP)
-            // Only check if ping is up to avoid long timeouts on dead hosts
             let connCount = 0;
-            if (pingRes.up) {
+            if (portUp || pingRes.up) {
                 connCount = await getConnectionCount(ip);
             }
 
             const newState = {
                 ip,
-                online: pingRes.up,
+                online: portUp, // Status depends on the service port
                 latency: pingRes.latency,
                 connCount
             };
@@ -437,6 +457,19 @@ app.get('/connection-count', async (c) => {
 app.get('/soundtracks', async (c) => {
     const tracks = await getSoundtrackList();
     return c.json({ tracks });
+});
+
+app.get('/snow-textures', async (c) => {
+    try {
+        const snowDir = path.join(__dirname, 'public', 'img', 'snow');
+        if (!fs.existsSync(snowDir)) return c.json([]);
+        const files = await fs.promises.readdir(snowDir);
+        const textures = files.filter(f => /\.(png|jpg|jpeg|gif)$/i.test(f));
+        return c.json(textures);
+    } catch (e) {
+        console.error('Error listing snow textures:', e);
+        return c.json([]);
+    }
 });
 
 // SSE Endpoint

@@ -3,6 +3,7 @@ document.addEventListener('alpine:init', () => {
         // State
         page: 'main', // 'main', 'terminal', 'proxmox'
         splashText: 'CNI 2025/2!',
+        logoSrc: 'img/logo.png',
         devices: [],
         proxmoxHosts: [],
         hiddenTerminalIps: [],
@@ -55,6 +56,7 @@ document.addEventListener('alpine:init', () => {
 
         async init() {
             this.initAudio();
+            this.initSnow();
             this.startScanDots();
             await this.loadSplash();
             await this.loadData();
@@ -590,6 +592,65 @@ document.addEventListener('alpine:init', () => {
                     Object.assign(host, newState);
                 }
             });
+        },
+
+        async initSnow() {
+            const now = new Date();
+            // Check if it's December (Month is 0-indexed, so 11 is December)
+            if (now.getMonth() === 11) {
+                this.logoSrc = 'img/logo-snow.png';
+                
+                let textures = ['snow-1.png', 'snow-2.png']; // Fallback
+                try {
+                    const res = await fetch('/snow-textures');
+                    const list = await res.json();
+                    if (list && list.length > 0) {
+                        textures = list;
+                    }
+                } catch (e) {
+                    console.error('Failed to load snow textures', e);
+                }
+
+                const createSnow = (containerId, count) => {
+                    const container = document.getElementById(containerId);
+                    if (!container) return;
+                    
+                    container.style.display = 'block';
+                    container.innerHTML = ''; // Clear previous
+
+                    for (let i = 0; i < count; i++) {
+                        const flake = document.createElement('div');
+                        flake.classList.add('snow-flake');
+                        
+                        // Random texture
+                        const texture = textures[Math.floor(Math.random() * textures.length)];
+                        flake.style.backgroundImage = `url('img/snow/${texture}')`;
+                        
+                        // Random properties
+                        const left = Math.random() * 100;
+                        const duration = Math.random() * 5 + 3; // 3-8s
+                        const delay = Math.random() * 5;
+                        const size = Math.random() * 12 + 8; // 8-20px size
+                        
+                        // Random animation path (sway left/right/zigzag)
+                        const animations = ['snowFall1', 'snowFall2', 'snowFall3', 'snowFall4'];
+                        const animationName = animations[Math.floor(Math.random() * animations.length)];
+
+                        flake.style.left = `${left}%`;
+                        flake.style.animationName = animationName;
+                        flake.style.animationDuration = `${duration}s`;
+                        flake.style.animationDelay = `${delay}s`;
+                        flake.style.width = `${size}px`;
+                        flake.style.height = `${size}px`;
+                        
+                        container.appendChild(flake);
+                    }
+                };
+
+                // Create snow layers
+                createSnow('snowContainerBack', 50);
+                createSnow('snowContainerFront', 50);
+            }
         }
     }));
 });
