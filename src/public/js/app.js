@@ -28,6 +28,10 @@ document.addEventListener('alpine:init', () => {
         musicVolume: 100,
         musicStarted: false,
         
+        // Theme State
+        currentTheme: 'default',
+        themes: ['default', 'snow'],
+
         // Snow State
         snowDensity: 50,
         snowImages: [],
@@ -62,8 +66,9 @@ document.addEventListener('alpine:init', () => {
         timeoutPlayed: false,
 
         async init() {
+            this.initTheme();
             this.initAudio();
-            this.initSnow();
+            // this.initSnow(); // Handled by initTheme
             this.startScanDots();
             await this.loadSplash();
             await this.loadData();
@@ -602,47 +607,110 @@ document.addEventListener('alpine:init', () => {
             });
         },
 
-        async initSnow() {
-            const now = new Date();
-            if (now.getMonth() === 11) {
-                let textureNames = ['snow-1.png', 'snow-2.png'];
-                try {
-                    const res = await fetch('/snow-textures');
-                    const list = await res.json();
-                    if (list && list.length > 0) {
-                        textureNames = list;
-                    }
-                } catch (e) {
-                    console.error('Failed to load snow textures', e);
+        initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme && this.themes.includes(savedTheme)) {
+                this.setTheme(savedTheme);
+            } else {
+                const now = new Date();
+                if (now.getMonth() === 11) {
+                    this.setTheme('snow');
+                } else {
+                    this.setTheme('default');
                 }
+            }
+        },
 
-                // Preload images
-                this.snowImages = await Promise.all(textureNames.map(name => {
-                    return new Promise((resolve) => {
-                        const img = new Image();
-                        img.src = `img/snow/${name}`;
-                        img.onload = () => resolve(img);
-                        img.onerror = () => resolve(null); // Skip broken images
-                    });
-                })).then(imgs => imgs.filter(img => img !== null));
+        setTheme(theme) {
+            this.currentTheme = theme;
+            localStorage.setItem('theme', theme);
+            
+            // Update Video
+            const bgVideo = document.getElementById('bgVideo');
+            if (bgVideo) {
+                const filename = theme === 'snow' ? 'panorama-bg-snow.mp4' : 'panorama-bg.mp4';
+                // Check if the current video source already contains the target filename
+                // Use currentSrc to check what is actually playing
+                if (!bgVideo.currentSrc.includes(filename)) {
+                     bgVideo.src = `videos/${filename}`;
+                     bgVideo.play().catch(() => {});
+                }
+            }
 
-                // Mouse tracking
+            if (theme === 'snow') {
+                document.body.classList.add('snow-theme');
+                this.initSnow();
+            } else {
+                document.body.classList.remove('snow-theme');
+                this.stopSnow();
+            }
+        },
+
+        stopSnow() {
+             if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
+            this.snowLayers.forEach(layer => {
+                if(layer.canvas) layer.canvas.remove();
+            });
+            this.snowLayers = [];
+            const back = document.getElementById('snowContainerBack');
+            const front = document.getElementById('snowContainerFront');
+            if(back) back.style.display = 'none';
+            if(front) front.style.display = 'none';
+        },
+
+        async initSnow() {
+            // Only init if snow theme is active
+            if (this.currentTheme !== 'snow') return;
+
+            // Prevent double init
+            if (this.snowLayers.length > 0) return;
+
+            let textureNames = ['snow-1.png', 'snow-2.png'];
+            try {
+                const res = await fetch('/snow-textures');
+                const list = await res.json();
+                if (list && list.length > 0) {
+                    textureNames = list;
+                }
+            } catch (e) {
+                console.error('Failed to load snow textures', e);
+            }
+
+            // Preload images
+            this.snowImages = await Promise.all(textureNames.map(name => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.src = `img/snow/${name}`;
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null); // Skip broken images
+                });
+            })).then(imgs => imgs.filter(img => img !== null));
+
+            // Mouse tracking (add only once)
+            if (!this._mouseListenerAdded) {
                 window.addEventListener('mousemove', (e) => {
                     this.mouseX = e.clientX;
                     this.mouseY = e.clientY;
                 });
+                this._mouseListenerAdded = true;
+            }
 
-                // Resize listener
+            // Resize listener (add only once)
+            if (!this._resizeListenerAdded) {
                 window.addEventListener('resize', () => {
                     this.snowLayers.forEach(layer => {
                         layer.canvas.width = window.innerWidth;
                         layer.canvas.height = window.innerHeight;
                     });
                 });
-
-                this.updateSnowDensity(this.snowDensity);
-                this.startSnowAnimation();
+                this._resizeListenerAdded = true;
             }
+
+            this.updateSnowDensity(this.snowDensity);
+            this.startSnowAnimation();
         },
 
         startSnowAnimation() {
@@ -704,8 +772,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         updateSnowDensity(density) {
-            const now = new Date();
-            if (now.getMonth() !== 11) return;
+            if (this.currentTheme !== 'snow') return;
 
             this.snowLayers = []; // Reset layers
             this.createSnowLayer('snowContainerBack', density);

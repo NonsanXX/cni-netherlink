@@ -6,6 +6,7 @@
     <title>Netherlink</title>
     <link rel="icon" type="image/x-icon" href="img/icon.ico" />
     <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/select.css" />
 
     <!-- Alpine.js & App Logic -->
     <script src="js/vendor/alpine.js" defer></script>
@@ -13,16 +14,18 @@
   </head>
 
   <body x-data="netherlinkApp">
-    <script>
-      if (new Date().getMonth() === 11) {
-        document.body.classList.add('snow-theme');
-      }
-    </script>
-    <!-- Background Video -->
+    <!-- Initial Theme & Video Loader -->
     <script>
       (function() {
+        var savedTheme = localStorage.getItem('theme');
         var isDec = new Date().getMonth() === 11;
-        var vid = isDec ? 'videos/panorama-bg-snow.mp4' : 'videos/panorama-bg.mp4';
+        var theme = savedTheme ? savedTheme : (isDec ? 'snow' : 'default');
+        
+        if (theme === 'snow') {
+          document.body.classList.add('snow-theme');
+        }
+        
+        var vid = theme === 'snow' ? 'videos/panorama-bg-snow.mp4' : 'videos/panorama-bg.mp4';
         document.write('<video id="bgVideo" autoplay muted loop playsinline class="bg-video"><source src="' + vid + '" type="video/mp4" /></video>');
       })();
     </script>
@@ -309,6 +312,17 @@
         <div class="options-title">Options</div>
 
         <div class="options-list">
+          <!-- Theme Selector -->
+          <div class="option-item">
+            <div class="slider-container">
+              <span class="slider-label" style="left: 20px; transform: translateY(-50%); text-align: left;">Theme:</span>
+              <select x-model="currentTheme" @change="setTheme($event.target.value); playClick()" @mousedown="playClick()" class="mc-select">
+                <option value="default">Default</option>
+                <option value="snow">Snow</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Sound Volume Control -->
           <div class="option-item">
             <div class="slider-container">
@@ -340,7 +354,7 @@
           </div>
 
           <!-- Snow Density Control -->
-          <div class="option-item" x-show="new Date().getMonth() === 11">
+          <div class="option-item" x-show="currentTheme === 'snow'">
             <div class="slider-container">
               <span class="slider-label" x-text="`Snow: ${snowDensity}`"
                 >Snow: 50</span

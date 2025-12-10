@@ -1,0 +1,37 @@
+
+/* Minecraft Style Select */
+.mc-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 180px;
+  height: 40px;
+  background: #999 url("../img/bgbtn.png") center / cover;
+  border: 2px solid #000;
+  color: #fff;
+  font-family: "Monocraft", "Courier New", monospace;
+  font-size: 1rem;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+  image-rendering: pixelated;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  box-shadow: inset -2px -4px rgba(0, 0, 0, 0.4), inset 2px 2px rgba(255, 255, 255, 0.4);
+  text-shadow: 2px 2px rgba(0, 0, 0, 0.6);
+  outline: none;
+}
+
+.mc-select:hover {
+  background-color: rgba(100, 100, 255, 0.45);
+  color: #ffffa0;
+  text-shadow: 2px 2px #202013cc;
+}
+
+.mc-select option {
+  background: #333;
+  color: #fff;
+}
