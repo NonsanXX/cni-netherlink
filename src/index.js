@@ -270,19 +270,49 @@ let proxmoxHosts = [];
 let deviceStates = {}; // { ip: { online: bool, latency: int, connCount: int } }
 let proxmoxStates = {}; // { ip: { online: bool, latency: int, connCount: int } }
 
+const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/NonsanXX/cni-netherlink/main/config/';
+
+async function fetchConfig(filename) {
+    // 1. Try GitHub
+    try {
+        const res = await fetch(GITHUB_RAW_BASE + filename);
+        if (res.ok) {
+            const data = await res.json();
+            // console.log(`[Config] Loaded ${filename} from GitHub`);
+            return data;
+        }
+    } catch (e) {
+        // Ignore error, fall back to local
+    }
+
+    // 2. Fallback to Local
+    try {
+        const localPath = path.join(__dirname, '..', 'config', filename);
+        if (fs.existsSync(localPath)) {
+            const content = await fs.promises.readFile(localPath, 'utf8');
+            // console.log(`[Config] Loaded ${filename} from Local`);
+            return JSON.parse(content);
+        }
+    } catch (e) {
+        console.error(`[Config] Failed to load ${filename}:`, e.message);
+    }
+    return null;
+}
+
 // Load configs
 async function loadConfigs() {
     try {
-        const devicesPath = path.join(__dirname, '..', 'config', 'devices.json');
-        const proxmoxPath = path.join(__dirname, '..', 'config', 'proxmox.json');
+        const newDevices = await fetchConfig('devices.json');
+        if (newDevices && Array.isArray(newDevices)) {
+            devices = newDevices;
+        }
         
-        if (fs.existsSync(devicesPath)) {
-            devices = JSON.parse(await fs.promises.readFile(devicesPath, 'utf8'));
+        const newProxmox = await fetchConfig('proxmox.json');
+        if (newProxmox && Array.isArray(newProxmox)) {
+            proxmoxHosts = newProxmox;
         }
-        if (fs.existsSync(proxmoxPath)) {
-            proxmoxHosts = JSON.parse(await fs.promises.readFile(proxmoxPath, 'utf8'));
-        }
-        console.log(`[Config] Loaded ${devices.length} devices and ${proxmoxHosts.length} Proxmox hosts`);
+        
+        console.log(`[Config] Updated: ${devices.length} devices, ${proxmoxHosts.length} proxmox hosts`);
     } catch (e) {
         console.error('[Config] Error loading configs:', e);
     }
@@ -290,21 +320,8 @@ async function loadConfigs() {
 
 loadConfigs();
 
-// Watch for config changes
-const configDir = path.join(__dirname, '..', 'config');
-if (fs.existsSync(configDir)) {
-    let fsWait = false;
-    fs.watch(configDir, (event, filename) => {
-        if (filename && (filename === 'devices.json' || filename === 'proxmox.json')) {
-            if (fsWait) return;
-            fsWait = setTimeout(() => {
-                fsWait = false;
-            }, 100);
-            console.log(`[Config] Detected change in ${filename}, reloading...`);
-            loadConfigs();
-        }
-    });
-}
+// Poll config every 5 minutes (300,000 ms)
+setInterval(loadConfigs, 5 * 60 * 1000);
 
 function broadcast(type, data) {
     const message = `data: ${JSON.stringify({ type, data })}\n\n`;
@@ -512,16 +529,16 @@ app.get('/events', (c) => {
 // Config files
 app.get('/config/:file', async (c) => {
     const fileName = c.req.param('file');
-    const configPath = path.join(__dirname, '..', 'config', fileName);
-    
-    try {
-        if (!fs.existsSync(configPath)) {
-            return c.json({ error: 'Config file not found' }, 404);
-        }
-        const content = await fs.promises.readFile(configPath, 'utf8');
-        return c.json(JSON.parse(content));
-    } catch (e) {
-        return c.json({ error: 'Error reading config file' }, 500);
+    // Security check: only allow specific files
+    if (!['devices.json', 'proxmox.json', 'splashtext.json'].includes(fileName)) {
+        return c.json({ error: 'Invalid config file' }, 400);
+    }
+
+    const data = await fetchConfig(fileName);
+    if (data) {
+        return c.json(data);
+    } else {
+        return c.json({ error: 'Config not found' }, 404);
     }
 });
 
