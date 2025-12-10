@@ -1520,3 +1520,59 @@ a.device-card {
   color: #80ff7b;
   text-decoration: underline;
 }
+
+/* Snow Theme Overrides */
+.snow-theme .loading-screen,
+.snow-theme .options-screen,
+.snow-theme .quit-screen {
+  background-image: url("../img/dirt-snow.png");
+  color: #1d1d1d;
+}
+
+.snow-theme .loading-text,
+.snow-theme .loading-status,
+.snow-theme .options-title,
+.snow-theme .quit-subtitle {
+  color: #1d1d1d;
+  text-shadow: 2px 2px rgba(255, 255, 255, 0.5);
+}
+
+.snow-theme .quit-title {
+  color: #444;
+  text-shadow: 2px 2px rgba(255, 255, 255, 0.5);
+}
+
+.snow-theme .jukebox-player {
+  background-image: url("../img/dirt-snow.png");
+  color: #1d1d1d;
+}
+
+.snow-theme .jukebox-label {
+  color: #444;
+}
+
+.snow-theme .jukebox-title {
+  color: #000;
+  text-shadow: none;
+}
+
+.snow-theme .jukebox-subtitle {
+  color: #333;
+}
+
+.snow-theme .footer {
+  background-image: url("../img/dirt-snow.png");
+  color: #1d1d1d;
+  text-shadow: none;
+  border-top-color: #555;
+}
+
+.snow-theme .footer-link {
+  color: #0055aa;
+  text-shadow: none;
+}
+
+.snow-theme .logo,
+.snow-theme .loading-logo {
+  content: url("../img/logo-snow.png");
+}

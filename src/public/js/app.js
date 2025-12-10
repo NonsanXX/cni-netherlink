@@ -3,7 +3,6 @@ document.addEventListener('alpine:init', () => {
         // State
         page: 'main', // 'main', 'terminal', 'proxmox'
         splashText: 'CNI 2025/2!',
-        logoSrc: 'img/logo.png',
         devices: [],
         proxmoxHosts: [],
         hiddenTerminalIps: [],
@@ -29,6 +28,14 @@ document.addEventListener('alpine:init', () => {
         musicVolume: 100,
         musicStarted: false,
         
+        // Snow State
+        snowDensity: 50,
+        snowImages: [],
+        snowLayers: [], // { id, canvas, ctx, particles }
+        mouseX: 0,
+        mouseY: 0,
+        animationFrameId: null,
+
         // UI State
         showOptions: false,
         showQuit: false,
@@ -66,6 +73,7 @@ document.addEventListener('alpine:init', () => {
             // Watch for volume changes
             this.$watch('soundVolume', val => this.updateSoundVolume(val));
             this.$watch('musicVolume', val => this.updateMusicVolume(val));
+            this.$watch('snowDensity', val => this.updateSnowDensity(val));
             
             // Global keyboard listener for Escape and drop hotkey
             window.addEventListener('keydown', (e) => {
@@ -596,61 +604,148 @@ document.addEventListener('alpine:init', () => {
 
         async initSnow() {
             const now = new Date();
-            // Check if it's December (Month is 0-indexed, so 11 is December)
             if (now.getMonth() === 11) {
-                this.logoSrc = 'img/logo-snow.png';
-                
-                let textures = ['snow-1.png', 'snow-2.png']; // Fallback
+                let textureNames = ['snow-1.png', 'snow-2.png'];
                 try {
                     const res = await fetch('/snow-textures');
                     const list = await res.json();
                     if (list && list.length > 0) {
-                        textures = list;
+                        textureNames = list;
                     }
                 } catch (e) {
                     console.error('Failed to load snow textures', e);
                 }
 
-                const createSnow = (containerId, count) => {
-                    const container = document.getElementById(containerId);
-                    if (!container) return;
-                    
-                    container.style.display = 'block';
-                    container.innerHTML = ''; // Clear previous
+                // Preload images
+                this.snowImages = await Promise.all(textureNames.map(name => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.src = `img/snow/${name}`;
+                        img.onload = () => resolve(img);
+                        img.onerror = () => resolve(null); // Skip broken images
+                    });
+                })).then(imgs => imgs.filter(img => img !== null));
 
-                    for (let i = 0; i < count; i++) {
-                        const flake = document.createElement('div');
-                        flake.classList.add('snow-flake');
-                        
-                        // Random texture
-                        const texture = textures[Math.floor(Math.random() * textures.length)];
-                        flake.style.backgroundImage = `url('img/snow/${texture}')`;
-                        
-                        // Random properties
-                        const left = Math.random() * 100;
-                        const duration = Math.random() * 5 + 3; // 3-8s
-                        const delay = Math.random() * 5;
-                        const size = Math.random() * 12 + 8; // 8-20px size
-                        
-                        // Random animation path (sway left/right/zigzag)
-                        const animations = ['snowFall1', 'snowFall2', 'snowFall3', 'snowFall4'];
-                        const animationName = animations[Math.floor(Math.random() * animations.length)];
+                // Mouse tracking
+                window.addEventListener('mousemove', (e) => {
+                    this.mouseX = e.clientX;
+                    this.mouseY = e.clientY;
+                });
 
-                        flake.style.left = `${left}%`;
-                        flake.style.animationName = animationName;
-                        flake.style.animationDuration = `${duration}s`;
-                        flake.style.animationDelay = `${delay}s`;
-                        flake.style.width = `${size}px`;
-                        flake.style.height = `${size}px`;
-                        
-                        container.appendChild(flake);
-                    }
-                };
+                // Resize listener
+                window.addEventListener('resize', () => {
+                    this.snowLayers.forEach(layer => {
+                        layer.canvas.width = window.innerWidth;
+                        layer.canvas.height = window.innerHeight;
+                    });
+                });
 
-                // Create snow layers
-                createSnow('snowContainerBack', 50);
-                createSnow('snowContainerFront', 50);
+                this.updateSnowDensity(this.snowDensity);
+                this.startSnowAnimation();
             }
+        },
+
+        startSnowAnimation() {
+            const animate = () => {
+                this.updateParticles();
+                this.animationFrameId = requestAnimationFrame(animate);
+            };
+            this.animationFrameId = requestAnimationFrame(animate);
+        },
+
+        updateParticles() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            this.snowLayers.forEach(layer => {
+                const ctx = layer.ctx;
+                ctx.clearRect(0, 0, width, height);
+
+                layer.particles.forEach(p => {
+                    // Gravity
+                    p.y += p.speed;
+                    
+                    // Sway
+                    p.swayOffset += p.swaySpeed;
+                    let dx = Math.sin(p.swayOffset) * 1.2; // Increased sway amplitude for floating effect
+                    
+                    // Mouse Interaction
+                    const distX = p.x - this.mouseX;
+                    const distY = p.y - this.mouseY;
+                    const dist = Math.sqrt(distX * distX + distY * distY);
+                    const minDist = 150; 
+                    
+                    if (dist < minDist) {
+                        const force = (minDist - dist) / minDist;
+                        const angle = Math.atan2(distY, distX);
+                        const pushX = Math.cos(angle) * force * 5;
+                        const pushY = Math.sin(angle) * force * 5;
+                        
+                        p.x += pushX;
+                        p.y += pushY;
+                    }
+
+                    p.x += dx;
+
+                    // Wrap around
+                    if (p.y > height + 20) {
+                        p.y = -20;
+                        p.x = Math.random() * width;
+                    }
+                    if (p.x > width + 20) p.x = -20;
+                    if (p.x < -20) p.x = width + 20;
+
+                    // Draw
+                    if (p.img) {
+                        ctx.drawImage(p.img, p.x, p.y, p.size, p.size);
+                    }
+                });
+            });
+        },
+
+        updateSnowDensity(density) {
+            const now = new Date();
+            if (now.getMonth() !== 11) return;
+
+            this.snowLayers = []; // Reset layers
+            this.createSnowLayer('snowContainerBack', density);
+            this.createSnowLayer('snowContainerFront', density);
+        },
+
+        createSnowLayer(containerId, count) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            container.style.display = 'block';
+            container.innerHTML = ''; // Clear previous
+
+            const canvas = document.createElement('canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            canvas.style.display = 'block';
+            container.appendChild(canvas);
+
+            const ctx = canvas.getContext('2d');
+            const particles = [];
+
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    speed: Math.random() * 0.15 + 0.05, // Very slow speed (0.05 - 0.2)
+                    swayOffset: Math.random() * Math.PI * 2,
+                    swaySpeed: 0.001 + Math.random() * 0.004, // Very gentle sway
+                    size: Math.random() * 12 + 8,
+                    img: this.snowImages[Math.floor(Math.random() * this.snowImages.length)]
+                });
+            }
+
+            this.snowLayers.push({
+                id: containerId,
+                canvas: canvas,
+                ctx: ctx,
+                particles: particles
+            });
         }
     }));
 });

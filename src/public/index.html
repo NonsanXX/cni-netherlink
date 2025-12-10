@@ -13,10 +13,24 @@
   </head>
 
   <body x-data="netherlinkApp">
+    <script>
+      if (new Date().getMonth() === 11) {
+        document.body.classList.add('snow-theme');
+      }
+    </script>
     <!-- Background Video -->
-    <video id="bgVideo" autoplay muted loop playsinline class="bg-video">
-      <source src="videos/panorama-bg.mp4" type="video/mp4" />
-    </video>
+    <script>
+      (function() {
+        var isDec = new Date().getMonth() === 11;
+        var vid = isDec ? 'videos/panorama-bg-snow.mp4' : 'videos/panorama-bg.mp4';
+        document.write('<video id="bgVideo" autoplay muted loop playsinline class="bg-video"><source src="' + vid + '" type="video/mp4" /></video>');
+      })();
+    </script>
+    <noscript>
+      <video id="bgVideo" autoplay muted loop playsinline class="bg-video">
+        <source src="videos/panorama-bg.mp4" type="video/mp4" />
+      </video>
+    </noscript>
 
     <!-- Snow Container (Back Layer) -->
     <div id="snowContainerBack" class="snow-container snow-back"></div>
@@ -49,7 +63,7 @@
       x-transition:leave.opacity.duration.500ms
     >
       <div class="loading-content">
-        <img :src="logoSrc" src="img/logo.png" alt="Netherlink" class="loading-logo" /><br />
+        <img src="img/logo.png" alt="Netherlink" class="loading-logo" /><br />
         <div class="loading-text">Building Terrain</div>
         <div class="loading-status" x-text="loadingMessage">
           Checking devices...
@@ -70,7 +84,7 @@
       x-show="page === 'main' && !showOptions && !showQuit"
     >
       <div class="logo-container">
-        <img :src="logoSrc" src="img/logo.png" alt="CNI Netherlink" class="logo" />
+        <img src="img/logo.png" alt="CNI Netherlink" class="logo" />
         <div class="splash-text" x-text="splashText">CNI 2025/2!</div>
       </div>
 
@@ -321,6 +335,22 @@
                 min="0"
                 max="100"
                 x-model="musicVolume"
+              />
+            </div>
+          </div>
+
+          <!-- Snow Density Control -->
+          <div class="option-item" x-show="new Date().getMonth() === 11">
+            <div class="slider-container">
+              <span class="slider-label" x-text="`Snow: ${snowDensity}`"
+                >Snow: 50</span
+              >
+              <input
+                type="range"
+                class="volume-slider"
+                min="0"
+                max="200"
+                x-model="snowDensity"
               />
             </div>
           </div>
